@@ -111,3 +111,56 @@ async def generate_plan_performance_chart(session: "AsyncSession") -> io.BytesIO
     plt.close(fig)
     
     return buf
+
+
+async def generate_yearly_revenue_chart(session: "AsyncSession") -> io.BytesIO:
+    """Generate a chart showing monthly revenue for the current year."""
+    today = date.today()
+    start_year = today.replace(month=1, day=1)
+    
+    # We aggregate by month using SQLite/Postgres date functions
+    # For compatibility across DBs, we fetch all and group in Python or use a robust SQL
+    stmt = (
+        select(
+            func.extract('month', Report.date).label('month'),
+            func.sum(Report.revenue).label('revenue')
+        )
+        .where(Report.date >= start_year)
+        .group_by(func.extract('month', Report.date))
+        .order_by('month')
+    )
+    res = await session.execute(stmt)
+    data = res.all()
+    
+    if not data:
+        return None
+    
+    # Month names mapping
+    month_names = {
+        1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
+        7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек'
+    }
+    
+    labels = [month_names.get(int(d[0])) for d in data]
+    revenues = [d[1] for d in data]
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    ax.bar(labels, revenues, color='#1cc88a', alpha=0.8)
+    
+    ax.set_title(f'Выручка по месяцам за {today.year} год', fontsize=16, fontweight='bold', pad=20)
+    ax.set_ylabel('₽', fontsize=12)
+    
+    # Add labels on bars
+    for i, v in enumerate(revenues):
+        ax.text(i, v + (max(revenues)*0.01), f'{v:,.0f}', ha='center', fontsize=10)
+        
+    ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=120)
+    buf.seek(0)
+    plt.close(fig)
+    
+    return buf

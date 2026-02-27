@@ -24,7 +24,8 @@ def kb_cabinet_main() -> InlineKeyboardMarkup:
 
 def kb_analytics() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="📈 График выручки", callback_data="chart:revenue")
+    b.button(text="📈 Выручка (30 дн)", callback_data="chart:revenue")
+    b.button(text="📊 Выручка за год", callback_data="chart:revenue_year")
     b.button(text="🎯 Выполнение планов", callback_data="chart:plans")
     b.button(text="◀️ Назад", callback_data="adm:back")
     b.adjust(1)

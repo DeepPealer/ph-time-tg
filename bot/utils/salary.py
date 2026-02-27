@@ -23,8 +23,8 @@ def calculate_salary(revenue: float, shift_count: int, levels: list[SalarySettin
     if not matched:
         matched = sorted(levels, key=lambda x: x.level)[-1]
 
-    total = matched.base_salary + revenue * matched.percentage
-    per_person = round(total / max(shift_count, 1), 2)
+    pct_part = (revenue * matched.percentage) / max(shift_count, 1)
+    per_person = round(matched.base_salary + pct_part, 2)
     return per_person, matched.level
 
 

@@ -11,12 +11,16 @@ from sqlalchemy import select, func, or_
 from bot.database.models import User, UserRole, SalarySetting, Plan, Report
 from bot.keyboards.builders import (
     kb_admin_main, kb_report_period, kb_employee_list, kb_employee_actions,
-    kb_salary_levels, kb_plans, kb_back, kb_analytics, menu_admin
+    kb_salary_levels, kb_plans, kb_back, kb_analytics, menu_admin,
+    kb_debt_list, kb_debt_actions
 )
 from bot.utils.excel import generate_excel_report
 from bot.utils.salary import get_salary_levels, salary_level_description
 from bot.utils.logging import log_action
-from bot.utils.charts import generate_revenue_chart, generate_plan_performance_chart
+from bot.utils.charts import (
+    generate_revenue_chart, generate_plan_performance_chart,
+    generate_yearly_revenue_chart
+)
 
 router = Router()
 
@@ -723,6 +727,26 @@ async def chart_revenue(call: CallbackQuery, session: AsyncSession, db_user: Use
     )
     await call.message.delete()
     await log_action(session, db_user.id, "Просмотр графика выручки")
+    await call.answer()
+
+
+@router.callback_query(F.data == "chart:revenue_year")
+async def chart_revenue_year(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return
+    await call.message.edit_text("⏳ Генерирую годовой график…")
+    
+    buf = await generate_yearly_revenue_chart(session)
+    if not buf:
+        await call.message.edit_text("❌ Нет данных для построения годового графика.", reply_markup=kb_analytics())
+        return
+    
+    await call.message.answer_photo(
+        BufferedInputFile(buf.getvalue(), filename="revenue_year.png"),
+        caption=f"📊 <b>Выручка по месяцам за {date.today().year} год</b>",
+        parse_mode="HTML"
+    )
+    await call.message.delete()
+    await log_action(session, db_user.id, "Просмотр годового графика выручки")
     await call.answer()
 
 
