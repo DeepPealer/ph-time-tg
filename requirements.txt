@@ -7,3 +7,4 @@ asyncpg
 alembic
 apscheduler
 matplotlib
+seaborn
