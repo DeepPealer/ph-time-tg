@@ -44,8 +44,16 @@ async def main() -> None:
     scheduler.start()
 
     logger.info("Starting bot…")
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    while True:
+        try:
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        except Exception as e:
+            logger.error(f"Бот упал с ошибкой: {e}. Перезапуск через 5 секунд…")
+            await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
