@@ -26,6 +26,7 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(100), nullable=True)
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.pending)
+    city: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'gomel' | 'minsk' | None
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -52,6 +53,8 @@ class Report(Base):
     birthdays: Mapped[int] = mapped_column(Integer)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     salary_level: Mapped[int] = mapped_column(Integer)
+    trainee_salary: Mapped[float] = mapped_column(Float, default=0.0)
+    city: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'gomel' | 'minsk'
     
     # ─── Payment Tracking ───
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -80,6 +83,7 @@ class Plan(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True) # NULL means global plan
+    city: Mapped[str | None] = mapped_column(String(20), nullable=True) # 'gomel' | 'minsk'
     plan_amount: Mapped[float] = mapped_column(Float)
     period: Mapped[str] = mapped_column(String(10)) # day, month
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -98,15 +102,14 @@ class AuditLog(Base):
     admin: Mapped["User"] = relationship()
 
 
-class Adjustment(Base):
-    __tablename__ = "adjustments"
+class ManagementExpense(Base):
+    """Management expenses entered by admin as separate transactions."""
+    __tablename__ = "management_expenses"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    amount: Mapped[float] = mapped_column(Float) # positive for bonus, negative for fine
-    reason: Mapped[str] = mapped_column(String(500))
-    date: Mapped[py_date] = mapped_column(Date)
-    is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    date: Mapped[py_date] = mapped_column(Date, index=True)
+    city: Mapped[str] = mapped_column(String(20)) # 'gomel' | 'minsk'
+    category: Mapped[str] = mapped_column(String(50)) # 'расходник' | 'техника' | 'аренда'
+    amount: Mapped[float] = mapped_column(Float)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    user: Mapped["User"] = relationship()

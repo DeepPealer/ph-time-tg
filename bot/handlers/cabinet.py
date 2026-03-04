@@ -3,7 +3,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from sqlalchemy import select, func
 
-from bot.database.models import User, Report, Adjustment
+from bot.database.models import User, Report
 from bot.keyboards.builders import kb_cabinet_main
 
 router = Router()
@@ -30,28 +30,9 @@ async def cab_stats(call: CallbackQuery, session: "AsyncSession", db_user: User)
     res_month = await session.execute(stmt_month)
     total_month = res_month.scalar() or 0.0
     
-    # Unpaid balance (reports + adjustments)
-    stmt_unpaid_rep = select(func.sum(Report.salary_paid)).where(
-        Report.user_id == db_user.id,
-        Report.is_paid == False
-    )
-    res_unpaid_rep = await session.execute(stmt_unpaid_rep)
-    unpaid_rep = res_unpaid_rep.scalar() or 0.0
-    
-    stmt_unpaid_adj = select(func.sum(Adjustment.amount)).where(
-        Adjustment.user_id == db_user.id,
-        Adjustment.is_paid == False
-    )
-    res_unpaid_adj = await session.execute(stmt_unpaid_adj)
-    unpaid_adj = res_unpaid_adj.scalar() or 0.0
-    
-    balance = unpaid_rep + unpaid_adj
-    
     msg = (
         f"📊 <b>Ваша статистика</b>\n\n"
-        f"📈 Заработано в этом месяце: <b>{total_month:,.0f} ₽</b>\n"
-        f"💸 Текущий баланс к выплате: <b>{balance:,.0f} ₽</b>\n"
-        f"   (отчеты: {unpaid_rep:,.0f}, корректировки: {unpaid_adj:,.0f})\n\n"
+        f"📈 Заработано в этом месяце: <b>{total_month:,.0f} ₽</b>\n\n"
         f"🗓 Данные на {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     )
     

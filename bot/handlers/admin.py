@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from calendar import monthrange
+import html
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
@@ -8,14 +9,14 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
-from bot.database.models import User, UserRole, SalarySetting, Plan, Report
+from bot.database.models import User, UserRole, SalarySetting, Plan, Report, ManagementExpense
 from bot.keyboards.builders import (
     kb_admin_main, kb_report_period, kb_employee_list, kb_employee_actions,
     kb_salary_levels, kb_plans, kb_back, kb_analytics, menu_admin,
-    kb_debt_list, kb_debt_actions
+    kb_city_for_employee, kb_month_select, kb_monthly_report_cities
 )
-from bot.utils.excel import generate_excel_report
-from bot.utils.salary import get_salary_levels, salary_level_description
+from bot.utils.excel import generate_excel_report, generate_monthly_calendar
+from bot.utils.salary import calculate_manager_salary
 from bot.utils.logging import log_action
 from bot.utils.charts import (
     generate_revenue_chart, generate_plan_performance_chart,
@@ -27,15 +28,17 @@ router = Router()
 
 class AdminForm(StatesGroup):
     add_emp_id        = State()
-    custom_start      = State()
-    custom_end        = State()
-    sal_edit_id       = State()  # stores level DB id in state data
+    sal_edit_id       = State()
     sal_edit_values   = State()
+    plan_city         = State()
     plan_project      = State()
     plan_amount       = State()
     plan_period       = State()
-    adj_amount        = State()  # For bonus/fine
-    adj_reason        = State()
+    mgmt_city         = State()
+    mgmt_date         = State()
+    mgmt_category     = State()
+    mgmt_amount       = State()
+    mgmt_comment      = State()
 
 
 def _require_admin(db_user: User) -> bool:
@@ -69,91 +72,26 @@ async def adm_back(call: CallbackQuery, db_user: User, state: FSMContext):
 @router.callback_query(F.data == "adm:reports")
 async def adm_reports(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
-    await call.message.edit_text("📊 <b>Выгрузка отчёта</b>\n\nВыберите период:",
-                                 parse_mode="HTML", reply_markup=kb_report_period())
+    try:
+        await call.message.edit_text("📊 <b>Выгрузка отчёта</b>\n\nВыберите период:",
+                                     parse_mode="HTML", reply_markup=kb_report_period())
+    except Exception as e:
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
-async def _send_excel(call: CallbackQuery, session: AsyncSession, start: date, end: date):
-    await call.message.edit_text(f"⏳ Генерирую отчёт за {start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}…")
-    data = await generate_excel_report(session, start, end)
-    fname = f"report_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.xlsx"
-    await call.message.answer_document(
-        BufferedInputFile(data, filename=fname),
-        caption=f"📊 Отчёт: {start.strftime('%d.%m.%Y')} – {end.strftime('%d.%m.%Y')}"
-    )
-    await call.message.delete()
 
-
-@router.callback_query(F.data == "period:cur_month")
-async def period_cur_month(call: CallbackQuery, session: AsyncSession, db_user: User):
+@router.callback_query(F.data == "period:monthly_calendar")
+async def period_monthly_calendar(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     today = date.today()
-    start = today.replace(day=1)
-    await _send_excel(call, session, start, today)
-    await call.answer()
-
-
-@router.callback_query(F.data == "period:prev_month")
-async def period_prev_month(call: CallbackQuery, session: AsyncSession, db_user: User):
-    if not _require_admin(db_user): return
-    today = date.today()
-    first = today.replace(day=1) - timedelta(days=1)
-    start = first.replace(day=1)
-    end   = first
-    await _send_excel(call, session, start, end)
-    await call.answer()
-
-
-@router.callback_query(F.data == "period:cur_year")
-async def period_cur_year(call: CallbackQuery, session: AsyncSession, db_user: User):
-    if not _require_admin(db_user): return
-    today = date.today()
-    start = today.replace(month=1, day=1)
-    await _send_excel(call, session, start, today)
-    await call.answer()
-
-
-@router.callback_query(F.data == "period:custom")
-async def period_custom(call: CallbackQuery, state: FSMContext, db_user: User):
-    if not _require_admin(db_user): return
-    await state.set_state(AdminForm.custom_start)
     await call.message.edit_text(
-        "📝 Введите <b>начало</b> периода (ДД.ММ.ГГГГ):",
-        parse_mode="HTML", reply_markup=kb_back()
+        "📅 <b>Выберите месяц для отчёта:</b>",
+        parse_mode="HTML",
+        reply_markup=kb_month_select(today.year, today.month)
     )
     await call.answer()
 
-
-@router.message(AdminForm.custom_start)
-async def adm_custom_start(message: Message, state: FSMContext):
-    try:
-        d = _parse_date(message.text)
-    except ValueError:
-        await message.answer("❌ Неверный формат. Введите ДД.ММ.ГГГГ:")
-        return
-    await state.update_data(custom_start=d.isoformat())
-    await state.set_state(AdminForm.custom_end)
-    await message.answer("📝 Введите <b>конец</b> периода (ДД.ММ.ГГГГ):", parse_mode="HTML")
-
-
-@router.message(AdminForm.custom_end)
-async def adm_custom_end(message: Message, state: FSMContext, session: AsyncSession, db_user: User, bot: Bot):
-    try:
-        end = _parse_date(message.text)
-    except ValueError:
-        await message.answer("❌ Неверный формат. Введите ДД.ММ.ГГГГ:")
-        return
-    d = await state.get_data()
-    start = date.fromisoformat(d["custom_start"])
-    await state.clear()
-    data = await generate_excel_report(session, start, end)
-    fname = f"report_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.xlsx"
-    await message.answer_document(
-        BufferedInputFile(data, filename=fname),
-        caption=f"📊 Отчёт: {start.strftime('%d.%m.%Y')} – {end.strftime('%Y%m%d')}",
-        reply_markup=menu_admin()
-    )
 
 
 # ─── Employees ────────────────────────────────────────────────────────────────
@@ -165,9 +103,15 @@ async def adm_employees(call: CallbackQuery, session: AsyncSession, db_user: Use
         select(User).where(User.role != UserRole.pending).order_by(User.full_name)
     )
     employees = res.scalars().all()
+    
+    from collections import defaultdict
+    by_city = defaultdict(list)
+    for e in employees:
+        by_city[e.city].append(e)
+    
     await call.message.edit_text(
         f"👥 <b>Сотрудники</b> ({len(employees)} чел.)\n\nВыберите для управления:",
-        parse_mode="HTML", reply_markup=kb_employee_list(employees)
+        parse_mode="HTML", reply_markup=kb_employee_list(by_city)
     )
     await call.answer()
 
@@ -180,15 +124,17 @@ async def emp_view(call: CallbackQuery, session: AsyncSession):
     if not emp:
         await call.answer("Не найден", show_alert=True); return
     role_str = {"admin": "Администратор", "employee": "Сотрудник"}.get(emp.role.value, emp.role.value)
+    city_str = {"gomel": "🏙 Гомель", "minsk": "🌆 Минск"}.get(emp.city or "", "❓ не задан")
     text = (
         f"👤 <b>{emp.full_name}</b>\n"
         f"📎 @{emp.username or '—'}\n"
         f"🆔 {emp.telegram_id}\n"
         f"🎭 Роль: {role_str}\n"
+        f"🏙 Город: {city_str}\n"
         f"✅ Активен: {'Да' if emp.is_active else 'Нет'}"
     )
     await call.message.edit_text(text, parse_mode="HTML",
-                                 reply_markup=kb_employee_actions(tg_id, emp.role.value))
+                                 reply_markup=kb_employee_actions(emp.telegram_id, emp.role.value, emp.city))
     await call.answer()
 
 
@@ -321,17 +267,130 @@ async def pending_deny(call: CallbackQuery, session: AsyncSession, bot: Bot):
     await call.answer("Отклонено")
 
 
-# ─── Salary settings ──────────────────────────────────────────────────────────
+# ─── Employee City ────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("emp:setcity:"))
+async def emp_setcity_prompt(call: CallbackQuery, db_user: User):
+    if not _require_admin(db_user): return
+    tg_id = int(call.data.split(":")[2])
+    await call.message.edit_text(
+        "🏙 <b>Выберите город для сотрудника:</b>\n"
+        "«Спрашивать» — бот будет спрашивать при каждом отчёте.",
+        parse_mode="HTML",
+        reply_markup=kb_city_for_employee(tg_id)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("emp:city:"))
+async def emp_city_set(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return
+    parts = call.data.split(":")  # emp:city:<city>:<tg_id>
+    city_raw, tg_id = parts[2], int(parts[3])
+    city = None if city_raw == "none" else city_raw
+    res = await session.execute(select(User).where(User.telegram_id == tg_id))
+    emp = res.scalar_one_or_none()
+    if emp:
+        emp.city = city
+        await session.commit()
+        city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(city or "", "спрашивать")
+        await call.message.edit_text(
+            f"✅ Город сотрудника <b>{emp.full_name}</b> установлен: <b>{city_label}</b>",
+            parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
+        )
+    await call.answer("Сохранено")
+
+
+# ─── Salary settings (legacy placeholder) ─────────────────────────────────────
 
 @router.callback_query(F.data == "adm:salary")
-async def adm_salary(call: CallbackQuery, session: AsyncSession, db_user: User):
+async def adm_salary(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
-    levels = await get_salary_levels(session)
-    lines = "\n".join(f"• {salary_level_description(l)}" for l in levels)
     await call.message.edit_text(
-        f"💰 <b>Шкала ЗП</b>\n\n{lines}\n\nВыберите уровень для редактирования:",
-        parse_mode="HTML", reply_markup=kb_salary_levels(levels)
+        "ℹ️ <b>Шкала ЗП</b>\n\n"
+        "Правила расчёта зарплаты фотографов зафиксированы в системе:\n\n"
+        "<b>Гомель Пн–Пт:</b> до 200 р → 25+10%; 200–300 → 20%; >300 → 22%\n"
+        "<b>Гомель Сб:</b> до 400 р → 25+10%; 400–800 → 20%; >800 → 22%\n"
+        "<b>Гомель Вс:</b> до 350 р → 25+10%; 350–600 → 20%; >600 → 22%\n"
+        "<b>Минск (все дни):</b> до 450 р → 45+10%; 450–1000 → 20%; >1000 → 22%\n\n"
+        "Процентная часть делится на число сотрудников в смене.",
+        parse_mode="HTML", reply_markup=kb_back()
     )
+    await call.answer()
+
+
+# ─── Manager Salary ───────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "adm:manager_salary")
+async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return
+    try:
+        today = date.today()
+        month_start = today.replace(day=1)
+
+        # Get all active monthly plans
+        res = await session.execute(
+            select(Plan).where(Plan.is_active == True, Plan.period == "month")
+        )
+        plans = res.scalars().all()
+
+        # Get revenue grouped by city and project
+        rev_res = await session.execute(
+            select(Report.city, Report.project_name, func.sum(Report.revenue))
+            .where(Report.date >= month_start, Report.date <= today)
+            .group_by(Report.city, Report.project_name)
+        )
+        
+        # city_rev[city][project] = sum
+        from collections import defaultdict
+        city_rev = defaultdict(lambda: defaultdict(float))
+        total_rev_by_city = defaultdict(float)
+        
+        for r_city, proj, rev in rev_res.all():
+            city_rev[r_city][proj] = float(rev or 0)
+            total_rev_by_city[r_city] += float(rev or 0)
+
+        lines = [f"💼 <b>ЗП Менеджера — {today.strftime('%B %Y')}</b>\n"]
+
+        if not plans:
+            lines.append("⚠️ Нет активных месячных планов.\nДобавьте план в разделе 🎯 Планы продаж.")
+        else:
+            # Group plans by city for display
+            plans_by_city = defaultdict(list)
+            for p in plans:
+                plans_by_city[p.city].append(p)
+                
+            sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, x != "gomel", x != "minsk"))
+            
+            for city in sorted_cities:
+                city_label = {"gomel": "🏙 ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "🌍 ОБЩИЕ")
+                lines.append(f"<b>{city_label}</b>")
+                
+                for plan in plans_by_city[city]:
+                    proj_label = plan.project_name or "Все проекты"
+                    if plan.project_name:
+                        actual = city_rev[city].get(plan.project_name, 0.0)
+                    else:
+                        actual = total_rev_by_city[city]
+                        
+                    salary, desc = calculate_manager_salary(float(actual), plan.plan_amount)
+                    pct = (actual * 100 / plan.plan_amount) if plan.plan_amount else 0
+                    bar = _progress_bar(pct)
+                    lines.append(
+                        f"🏪 {proj_label}\n"
+                        f"   Оборот: <b>{actual:,.0f} р</b> / план <b>{plan.plan_amount:,.0f} р</b>\n"
+                        f"   {bar} <b>{pct:.1f}%</b>\n"
+                        f"   {desc}\n"
+                        f"   💸 ЗП: <b>{salary:,.2f} р</b>\n"
+                    )
+                lines.append("")
+
+        await call.message.edit_text(
+            "\n".join(lines),
+            parse_mode="HTML", reply_markup=kb_back()
+        )
+    except Exception as e:
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
@@ -376,10 +435,21 @@ async def sal_edit_save(message: Message, state: FSMContext, session: AsyncSessi
 @router.callback_query(F.data == "adm:plans")
 async def adm_plans(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
-    res = await session.execute(select(Plan).order_by(Plan.project_name))
-    plans = res.scalars().all()
-    text = "🎯 <b>Планы продаж</b>\n\nНажмите для вкл/выкл или добавьте новый:"
-    await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_plans(plans))
+    try:
+        res = await session.execute(select(Plan).order_by(Plan.created_at.desc()))
+        plans = res.scalars().all()
+        
+        from collections import defaultdict
+        by_city = defaultdict(list)
+        for p in plans:
+            by_city[p.city].append(p)
+            
+        await call.message.edit_text(
+            "🎯 <b>Планы продаж</b>\n\nЗдесь можно настроить цели по выручке для проектов или общие.",
+            parse_mode="HTML", reply_markup=kb_plans(by_city)
+        )
+    except Exception as e:
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
@@ -391,9 +461,13 @@ async def plan_toggle(call: CallbackQuery, session: AsyncSession):
     if plan:
         plan.is_active = not plan.is_active
         await session.commit()
-    res2 = await session.execute(select(Plan).order_by(Plan.project_name))
+    res2 = await session.execute(select(Plan).order_by(Plan.created_at.desc()))
     plans = res2.scalars().all()
-    await call.message.edit_reply_markup(reply_markup=kb_plans(plans))
+    from collections import defaultdict
+    by_city = defaultdict(list)
+    for p in plans:
+        by_city[p.city].append(p)
+    await call.message.edit_reply_markup(reply_markup=kb_plans(by_city))
     await call.answer("Изменено")
 
 
@@ -406,26 +480,44 @@ async def plan_delete(call: CallbackQuery, session: AsyncSession):
         await session.delete(plan)
         await session.commit()
     
-    res2 = await session.execute(select(Plan).order_by(Plan.project_name))
+    res2 = await session.execute(select(Plan).order_by(Plan.created_at.desc()))
     plans = res2.scalars().all()
-    await call.message.edit_reply_markup(reply_markup=kb_plans(plans))
+    from collections import defaultdict
+    by_city = defaultdict(list)
+    for p in plans:
+        by_city[p.city].append(p)
+    await call.message.edit_reply_markup(reply_markup=kb_plans(by_city))
     await call.answer("План удален")
 
 
 @router.callback_query(F.data == "plan:add")
 async def plan_add_prompt(call: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminForm.plan_city)
+    from bot.keyboards.builders import kb_city
+    # We use building keyboard for reports city selection as it is same
+    await call.message.edit_text("🏙 Выберите город для плана:", reply_markup=kb_city())
+    await call.answer()
+
+
+@router.callback_query(AdminForm.plan_city)
+async def plan_add_city(call: CallbackQuery, state: FSMContext):
+    city = call.data.split(":")[2]
+    if city == "cancel":
+        await state.clear()
+        return await adm_plans(call, None, None) # session and user not needed for simple back
+    
+    await state.update_data(plan_city=city if city != "none" else None)
     await state.set_state(AdminForm.plan_project)
     await call.message.edit_text(
-        "➕ <b>Добавить план</b>\n\n"
-        "Введите название проекта (или «все» для общего плана):",
-        parse_mode="HTML", reply_markup=kb_back("adm:plans")
+        "📝 Введите название проекта (например 'Бассейн')\nили 0 для общего плана на город:",
+        reply_markup=kb_back("adm:plans")
     )
     await call.answer()
 
 
 @router.message(AdminForm.plan_project)
 async def plan_add_project(message: Message, state: FSMContext):
-    project = None if message.text.strip().lower() == "все" else message.text.strip()
+    project = None if message.text.strip().lower() == "все" or message.text.strip() == "0" else message.text.strip()
     await state.update_data(plan_project=project)
     await state.set_state(AdminForm.plan_amount)
     await message.answer("Введите <b>сумму плана</b> (₽):", parse_mode="HTML")
@@ -447,7 +539,12 @@ async def plan_add_period(message: Message, state: FSMContext, session: AsyncSes
     txt = message.text.strip().lower()
     period = "day" if "день" in txt or txt == "day" else "month"
     d = await state.get_data()
-    session.add(Plan(project_name=d["plan_project"], plan_amount=d["plan_amount"], period=period))
+    session.add(Plan(
+        city=d["plan_city"],
+        project_name=d["plan_project"],
+        plan_amount=d["plan_amount"],
+        period=period
+    ))
     await session.commit()
     await state.clear()
     proj_str = d["plan_project"] or "Все проекты"
@@ -463,63 +560,78 @@ async def plan_add_period(message: Message, state: FSMContext, session: AsyncSes
 @router.callback_query(F.data == "adm:stats")
 async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
+    try:
+        today = date.today()
+        month_start = today.replace(day=1)
 
-    today = date.today()
-    month_start = today.replace(day=1)
-
-    res = await session.execute(
-        select(Plan).where(Plan.is_active == True).order_by(Plan.project_name)
-    )
-    plans = res.scalars().all()
-
-    if not plans:
-        await call.message.edit_text(
-            "📈 <b>Статистика планов</b>\n\nАктивных планов нет.\n"
-            "Добавьте их в разделе 🎯 Планы продаж.",
-            parse_mode="HTML", reply_markup=kb_back()
+        res = await session.execute(
+            select(Plan).where(Plan.is_active == True)
         )
-        await call.answer()
-        return
+        plans = res.scalars().all()
 
-    lines = ["📈 <b>Статистика выполнения планов</b>\n"]
-
-    for plan in plans:
-        proj_label = plan.project_name or "Все проекты"
-        period_label = "день" if plan.period == "day" else "месяц"
-        period_start = today if plan.period == "day" else month_start
-
-        # Build filter: project-specific or global (sum all projects)
-        proj_filter = (
-            Report.project_name == plan.project_name
-            if plan.project_name
-            else True  # global plan — sum everything
-        )
-
-        rev_res = await session.execute(
-            select(func.coalesce(func.sum(Report.revenue), 0.0))
-            .where(
-                Report.date >= period_start,
-                Report.date <= today,
-                proj_filter,
+        if not plans:
+            await call.message.edit_text(
+                "📈 <b>Статистика планов</b>\n\nАктивных планов нет.\n"
+                "Добавьте их в разделе 🎯 Планы продаж.",
+                parse_mode="HTML", reply_markup=kb_back()
             )
+            await call.answer()
+            return
+
+        from collections import defaultdict
+        plans_by_city = defaultdict(list)
+        for p in plans:
+            plans_by_city[p.city].append(p)
+
+        lines = ["📈 <b>Статистика выполнения планов</b>\n"]
+
+        sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, x != "gomel", x != "minsk"))
+
+        for city in sorted_cities:
+            city_label = {"gomel": "🏙 ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "🌍 ОБЩИЕ")
+            lines.append(f"<b>{city_label}</b>")
+            
+            for plan in plans_by_city[city]:
+                proj_label = plan.project_name or "Все проекты"
+                period_label = "день" if plan.period == "day" else "месяц"
+                period_start = today if plan.period == "day" else month_start
+
+                # Project filter: specific project or all in city
+                if plan.project_name:
+                    proj_filter = Report.project_name == plan.project_name
+                else:
+                    proj_filter = True
+                
+                # City filter
+                report_city_filter = Report.city == plan.city
+
+                rev_res = await session.execute(
+                    select(func.coalesce(func.sum(Report.revenue), 0.0))
+                    .where(
+                        Report.date >= period_start,
+                        Report.date <= today,
+                        report_city_filter if plan.city else Report.city.is_(None),
+                        proj_filter,
+                    )
+                )
+                actual = float(rev_res.scalar() or 0.0)
+                pct = (actual * 100 / plan.plan_amount) if plan.plan_amount else 0
+                bar = _progress_bar(pct)
+                lines.append(
+                    f"🎯 {proj_label} ({period_label}):\n"
+                    f"   {bar} <b>{pct:.1f}%</b> ({actual:,.0f} / {plan.plan_amount:,.0f} р)"
+                )
+            lines.append("")
+
+        lines.append(f"\n🗓 По состоянию на: {today.strftime('%d.%m.%Y')}")
+
+        await call.message.edit_text(
+            "\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=kb_back()
         )
-        actual = float(rev_res.scalar())
-        pct = (actual / plan.plan_amount * 100) if plan.plan_amount else 0
-        bar = _progress_bar(pct)
-
-        lines.append(
-            f"🏪 <b>{proj_label}</b> ({period_label})\n"
-            f"   План:    <b>{actual:,.0f} / {plan.plan_amount:,.0f} ₽</b>\n"
-            f"   {bar} <b>{pct:.0f}%</b>\n"
-        )
-
-    lines.append(f"\n🗓 По состоянию на: {today.strftime('%d.%m.%Y')}")
-
-    await call.message.edit_text(
-        "\n".join(lines),
-        parse_mode="HTML",
-        reply_markup=kb_back()
-    )
+    except Exception as e:
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
@@ -528,176 +640,10 @@ def _progress_bar(pct: float, width: int = 10) -> str:
     return "[" + "█" * filled + "░" * (width - filled) + "]"
 
 
-# ─── Debt / Payroll ──────────────────────────────────────────────────────────
-
-@router.callback_query(F.data == "adm:debt")
-async def adm_debt(call: CallbackQuery, session: AsyncSession, db_user: User):
-    if not _require_admin(db_user): return
-    
-    # Query unpaid reports
-    stmt_rep = (
-        select(User.telegram_id, User.full_name, func.sum(Report.salary_paid))
-        .join(Report, User.id == Report.user_id)
-        .where(Report.is_paid == False)
-        .group_by(User.telegram_id, User.full_name)
-    )
-    res_rep = await session.execute(stmt_rep)
-    unpaid_rep = {r[0]: {"name": r[1], "amount": r[2]} for r in res_rep.all()}
-
-    # Query unpaid adjustments
-    from bot.database.models import Adjustment
-    stmt_adj = (
-        select(User.telegram_id, User.full_name, func.sum(Adjustment.amount))
-        .join(Adjustment, User.id == Adjustment.user_id)
-        .where(Adjustment.is_paid == False)
-        .group_by(User.telegram_id, User.full_name)
-    )
-    res_adj = await session.execute(stmt_adj)
-    unpaid_adj = {r[0]: {"name": r[1], "amount": r[2]} for r in res_adj.all()}
-
-    # Merge
-    all_tg_ids = set(unpaid_rep.keys()).union(unpaid_adj.keys())
-    merged = []
-    for tid in all_tg_ids:
-        name = unpaid_rep.get(tid, unpaid_adj.get(tid))["name"]
-        total = unpaid_rep.get(tid, {}).get("amount", 0) + unpaid_adj.get(tid, {}).get("amount", 0)
-        if total != 0:
-            merged.append((tid, name, total))
-    
-    if not merged:
-        await call.message.edit_text("✅ Все зарплаты и премии выплачены!", reply_markup=kb_back())
-        return
-
-    await call.message.edit_text(
-        "💸 <b>Задолженность по зарплате</b>\n(отчеты + премии/штрафы)",
-        parse_mode="HTML",
-        reply_markup=kb_debt_list(merged)
-    )
-    await call.answer()
+# ─── Debt / Payroll REMOVED (as requested) ───────────────────────────────────
 
 
-@router.callback_query(F.data.startswith("debt:view:"))
-async def debt_view_user(call: CallbackQuery, session: AsyncSession, db_user: User):
-    if not _require_admin(db_user): return
-    tg_id = int(call.data.split(":")[2])
-    
-    stmt_rep = select(Report).join(User).where(User.telegram_id == tg_id, Report.is_paid == False).order_by(Report.date)
-    res_rep = await session.execute(stmt_rep)
-    reports = res_rep.scalars().all()
-    
-    from bot.database.models import Adjustment
-    stmt_adj = select(Adjustment).join(User).where(User.telegram_id == tg_id, Adjustment.is_paid == False).order_by(Adjustment.date)
-    res_adj = await session.execute(stmt_adj)
-    adjs = res_adj.scalars().all()
-    
-    total = sum(r.salary_paid for r in reports) + sum(a.amount for a in adjs)
-    name = reports[0].employee_name if reports else adjs[0].user.full_name
-    
-    lines = [f"👤 <b>{name}</b>\nИТОГО к выплате: <b>{total:,.0f} ₽</b>\n"]
-    
-    if reports:
-        lines.append("📅 <b>Отчеты:</b>")
-        for r in reports:
-            lines.append(f"▫️ {r.date.strftime('%d.%m.%Y')}: {r.salary_paid:,.0f} ₽")
-    
-    if adjs:
-        lines.append("\n💰 <b>Корректировки:</b>")
-        for a in adjs:
-            label = "Премия" if a.amount > 0 else "Штраф"
-            lines.append(f"▫️ {a.date.strftime('%d.%m.%Y')} {label}: {a.amount:,.0f} ₽ ({a.reason})")
-    
-    await call.message.edit_text(
-        "\n".join(lines),
-        parse_mode="HTML",
-        reply_markup=kb_debt_actions(tg_id)
-    )
-    await call.answer()
 
-
-@router.callback_query(F.data.startswith("debt:payall:"))
-async def debt_pay_all(call: CallbackQuery, session: AsyncSession, db_user: User):
-    if not _require_admin(db_user): return
-    tg_id = int(call.data.split(":")[2])
-    
-    # Mark reports
-    stmt_rep = select(Report).join(User).where(User.telegram_id == tg_id, Report.is_paid == False)
-    res_rep = await session.execute(stmt_rep)
-    reports = res_rep.scalars().all()
-    for r in reports:
-        r.is_paid = True
-        r.payment_date = datetime.now()
-        
-    # Mark adjustments
-    from bot.database.models import Adjustment
-    stmt_adj = select(Adjustment).join(User).where(User.telegram_id == tg_id, Adjustment.is_paid == False)
-    res_adj = await session.execute(stmt_adj)
-    adjs = res_adj.scalars().all()
-    for a in adjs:
-        a.is_paid = True
-    
-    total = sum(r.salary_paid for r in reports) + sum(a.amount for a in adjs)
-    
-    await log_action(session, db_user.id, "Выплата ЗП", f"Сотрудник ID {tg_id}, Сумма: {total} ₽, Отчетов: {len(reports)}, Корр: {len(adjs)}")
-    await session.commit()
-    
-    await call.answer(f"✅ Выплачено {total:,.0f} ₽", show_alert=True)
-    await adm_debt(call, session, db_user)
-
-
-# ─── Adjustments (Bonus/Fine) ─────────────────────────────────────────────────
-
-@router.callback_query(F.data.startswith("emp:adj:"))
-async def emp_adj_start(call: CallbackQuery, state: FSMContext, db_user: User):
-    if not _require_admin(db_user): return
-    tg_id = int(call.data.split(":")[2])
-    await state.update_data(adj_user_tg_id=tg_id)
-    await call.message.edit_text(
-        "💰 <b>Премия или Штраф</b>\n\nВведите сумму (положительная — премия, отрицательная — штраф):\nНапример: 1000 или -500",
-        parse_mode="HTML",
-        reply_markup=kb_back()
-    )
-    await state.set_state(AdminForm.adj_amount)
-    await call.answer()
-
-
-@router.message(AdminForm.adj_amount)
-async def process_adj_amount(message: Message, state: FSMContext):
-    try:
-        val = float(message.text.strip().replace(" ", "").replace(",", "."))
-    except ValueError:
-        await message.answer("❌ Введите корректное число:")
-        return
-    await state.update_data(adj_amount=val)
-    await message.answer("Введите причину (кратко):")
-    await state.set_state(AdminForm.adj_reason)
-
-
-@router.message(AdminForm.adj_reason)
-async def process_adj_reason(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
-    data = await state.get_data()
-    tg_id = data["adj_user_tg_id"]
-    amount = data["adj_amount"]
-    reason = message.text.strip()
-    
-    from bot.database.models import Adjustment
-    
-    stmt = select(User).where(User.telegram_id == tg_id)
-    res = await session.execute(stmt)
-    target_user = res.scalar_one()
-    
-    adj = Adjustment(
-        user_id=target_user.id,
-        amount=amount,
-        reason=reason,
-        date=date.today()
-    )
-    session.add(adj)
-    await log_action(session, db_user.id, "Добавлена корректировка", f"User: {target_user.full_name}, Amount: {amount}, Reason: {reason}")
-    await session.commit()
-    
-    label = "Премия" if amount > 0 else "Штраф"
-    await message.answer(f"✅ {label} ({amount:,.0f} ₽) начислена {target_user.full_name}.", reply_markup=menu_admin())
-    await state.clear()
 
 
 # ─── Analytics / Charts ───────────────────────────────────────────────────────
@@ -775,3 +721,161 @@ async def chart_plans(call: CallbackQuery, session: AsyncSession, db_user: User)
 def _parse_date(text: str) -> date:
     from datetime import datetime
     return datetime.strptime(text.strip(), "%d.%m.%Y").date()
+
+
+# ─── Monthly Calendar Report ───────────────────────────────────────────────────
+
+@router.callback_query(F.data == "period:monthly_calendar")
+async def period_monthly_calendar(call: CallbackQuery, db_user: User):
+    if not _require_admin(db_user): return
+    await call.message.edit_text(
+        "📅 <b>Месячный отчёт</b>\n\nВыберите город:",
+        parse_mode="HTML",
+        reply_markup=kb_monthly_report_cities()
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("period:monthly_city:"))
+async def monthly_city_select(call: CallbackQuery, db_user: User):
+    if not _require_admin(db_user): return
+    city = call.data.split(":")[2]
+    today = date.today()
+    await call.message.edit_text(
+        f"📅 <b>Месячный отчёт — {city.title()}</b>\n\nВыберите месяц:",
+        parse_mode="HTML",
+        reply_markup=kb_month_select(today.year, today.month, city=city)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("month:"))
+async def send_monthly_calendar(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return
+    parts = call.data.split(":")
+    year, month = int(parts[1]), int(parts[2])
+    city = parts[3] if len(parts) > 3 else "all"
+
+    import calendar as cal
+    month_name = f"{cal.month_name[month]} {year}"
+    city_lbl = f" ({city})" if city != "all" else ""
+    await call.message.edit_text(f"⏳ Генерирую отчёт за {month_name}{city_lbl}…")
+    
+    try:
+        data = await generate_monthly_calendar(session, year, month, city=city)
+        fname = f"report_{city}_{year}-{month:02d}.xlsx"
+        await call.message.answer_document(
+            BufferedInputFile(data, filename=fname),
+            caption=f"📅 Месячный отчёт: <b>{month_name}</b>{city_lbl}",
+            parse_mode="HTML",
+            reply_markup=menu_admin()
+        )
+        await call.message.delete()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await call.message.answer(f"❌ Ошибка генерации: {html.escape(str(e))}\n\nПроверьте логи сервера.", reply_markup=menu_admin())
+    await call.answer()
+
+
+# ─── Management Expenses (Расходник / Аренда / Техника) ───────────────────────
+
+@router.callback_query(F.data == "adm:mgmt_expenses")
+async def adm_mgmt_expenses(call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
+    if not _require_admin(db_user): return
+    await state.set_state(AdminForm.mgmt_city)
+    from bot.keyboards.builders import kb_city
+    await call.message.edit_text("🏙 Выберите город для расхода:", reply_markup=kb_city())
+    await call.answer()
+
+
+@router.callback_query(AdminForm.mgmt_city)
+async def mgmt_city_select(call: CallbackQuery, state: FSMContext):
+    city = call.data.split(":")[2]
+    if city == "cancel":
+        await state.clear()
+        return await show_admin_panel(call.message, None, state) # will clear state but menu needs role
+    
+    await state.update_data(mgmt_city=city if city != "none" else None)
+    await state.set_state(AdminForm.mgmt_date)
+    from bot.keyboards.builders import kb_use_today
+    today_str = date.today().strftime("%d.%m.%Y")
+    await call.message.edit_text(
+        f"📅 Введите <b>дату</b> расхода (ДД.ММ.ГГГГ):",
+        parse_mode="HTML", reply_markup=kb_use_today(today_str)
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminForm.mgmt_date, F.data == "report:use_today")
+async def mgmt_date_today(call: CallbackQuery, state: FSMContext):
+    await state.update_data(mgmt_date=date.today().isoformat())
+    await mgmt_ask_category(call.message, state)
+    await call.answer()
+
+
+@router.message(AdminForm.mgmt_date)
+async def mgmt_date_input(message: Message, state: FSMContext):
+    try:
+        d = _parse_date(message.text)
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите ДД.ММ.ГГГГ:"); return
+    await state.update_data(mgmt_date=d.isoformat())
+    await mgmt_ask_category(message, state)
+
+
+async def mgmt_ask_category(message: Message, state: FSMContext):
+    from bot.keyboards.builders import kb_mgmt_categories
+    await state.set_state(AdminForm.mgmt_category)
+    await message.answer("📂 Выберите категорию расхода:", reply_markup=kb_mgmt_categories())
+
+
+@router.callback_query(AdminForm.mgmt_category, F.data.startswith("mgmt:cat:"))
+async def mgmt_category_select(call: CallbackQuery, state: FSMContext):
+    cat = call.data.split(":")[2]
+    await state.update_data(mgmt_category=cat)
+    await state.set_state(AdminForm.mgmt_amount)
+    await call.message.edit_text(f"💰 Введите <b>сумму</b> ({cat}):", parse_mode="HTML", reply_markup=kb_back())
+    await call.answer()
+
+
+@router.message(AdminForm.mgmt_amount)
+async def mgmt_amount_input(message: Message, state: FSMContext):
+    try:
+        v = float(message.text.strip().replace(" ", "").replace(",", "."))
+        if v < 0: raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите число:"); return
+    await state.update_data(mgmt_amount=v)
+    await state.set_state(AdminForm.mgmt_comment)
+    from bot.keyboards.builders import kb_cancel_skip
+    await message.answer("💬 Добавьте комментарий (или пропустите):", reply_markup=kb_cancel_skip())
+
+
+@router.callback_query(AdminForm.mgmt_comment, F.data == "report:skip")
+async def mgmt_comment_skip(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
+    await state.update_data(mgmt_comment=None)
+    await mgmt_save(call.message, state, session, db_user)
+    await call.answer()
+
+
+@router.message(AdminForm.mgmt_comment)
+async def mgmt_comment_input(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
+    await state.update_data(mgmt_comment=message.text.strip())
+    await mgmt_save(message, state, session, db_user)
+
+
+async def mgmt_save(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
+    d = await state.get_data()
+    expense = ManagementExpense(
+        date=date.fromisoformat(d["mgmt_date"]),
+        city=d["mgmt_city"],
+        category=d["mgmt_category"],
+        amount=d["mgmt_amount"],
+        comment=d.get("mgmt_comment")
+    )
+    session.add(expense)
+    await log_action(session, db_user.id, "Добавлен управл. расход", f"{d['mgmt_category']}: {d['mgmt_amount']} р")
+    await session.commit()
+    await state.clear()
+    await message.answer("✅ Управленческий расход сохранён!", reply_markup=menu_admin())
