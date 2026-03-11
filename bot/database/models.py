@@ -109,6 +109,7 @@ class ManagementExpense(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[py_date] = mapped_column(Date, index=True)
     city: Mapped[str] = mapped_column(String(20)) # 'gomel' | 'minsk'
+    project_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     category: Mapped[str] = mapped_column(String(50)) # 'расходник' | 'техника' | 'аренда'
     amount: Mapped[float] = mapped_column(Float)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

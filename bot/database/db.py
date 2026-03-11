@@ -24,6 +24,9 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Handle migrations without Alembic: ensure project_name column exists
+        from sqlalchemy import text
+        await conn.execute(text("ALTER TABLE management_expenses ADD COLUMN IF NOT EXISTS project_name VARCHAR(200);"))
 
     async with SessionLocal() as session:
         result = await session.execute(select(SalarySetting))

@@ -160,6 +160,16 @@ async def process_shift_count(message: Message, state: FSMContext, db_user: User
         await message.answer("❌ Введите целое число (например: 3):")
         return
     await state.update_data(shift_count=n)
+    if n > 1:
+        await message.answer(
+            f"👥 <b>Совместная смена ({n} чел.)</b>\n\n"
+            "📌 <b>Как сдавать отчёт при работе вдвоём:</b>\n"
+            "• Каждый сдаёт <b>свой отдельный отчёт</b>\n"
+            "• Каждый вводит <b>полную выручку</b> смены\n"
+            "• ЗП делится автоматически на кол-во человек\n"
+            "• В Excel выручка учитывается один раз ✅",
+            parse_mode="HTML"
+        )
     await _finalize_step(message, state, db_user, session,
         "Шаг 6/13 — <b>Общая выручка</b> (₽, только число):", ReportForm.revenue)
 

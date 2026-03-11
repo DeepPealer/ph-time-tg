@@ -23,8 +23,6 @@ services:
         condition: service_healthy
     logging:
       driver: "json-file"
-      options:docker compose up -d
-
-
+      options:
         max-size: "10m"
         max-file: "3"

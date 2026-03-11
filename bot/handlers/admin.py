@@ -35,6 +35,7 @@ class AdminForm(StatesGroup):
     plan_amount       = State()
     plan_period       = State()
     mgmt_city         = State()
+    mgmt_project      = State()
     mgmt_date         = State()
     mgmt_category     = State()
     mgmt_amount       = State()
@@ -79,18 +80,6 @@ async def adm_reports(call: CallbackQuery, db_user: User):
         await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
-
-
-@router.callback_query(F.data == "period:monthly_calendar")
-async def period_monthly_calendar(call: CallbackQuery, db_user: User):
-    if not _require_admin(db_user): return
-    today = date.today()
-    await call.message.edit_text(
-        "📅 <b>Выберите месяц для отчёта:</b>",
-        parse_mode="HTML",
-        reply_markup=kb_month_select(today.year, today.month)
-    )
-    await call.answer()
 
 
 
@@ -741,8 +730,9 @@ async def monthly_city_select(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     city = call.data.split(":")[2]
     today = date.today()
+    city_lbl = {"gomel": "Гомель", "minsk": "Минск", "all": "Все города"}.get(city, city.title())
     await call.message.edit_text(
-        f"📅 <b>Месячный отчёт — {city.title()}</b>\n\nВыберите месяц:",
+        f"📅 <b>Месячный отчёт — {city_lbl}</b>\n\nВыберите месяц:",
         parse_mode="HTML",
         reply_markup=kb_month_select(today.year, today.month, city=city)
     )
@@ -790,27 +780,89 @@ async def adm_mgmt_expenses(call: CallbackQuery, session: AsyncSession, db_user:
 
 
 @router.callback_query(AdminForm.mgmt_city)
-async def mgmt_city_select(call: CallbackQuery, state: FSMContext):
+async def mgmt_city_select(call: CallbackQuery, state: FSMContext, session: AsyncSession):
     city = call.data.split(":")[2]
     if city == "cancel":
         await state.clear()
-        return await show_admin_panel(call.message, None, state) # will clear state but menu needs role
+        return await show_admin_panel(call.message, None, state)
     
-    await state.update_data(mgmt_city=city if city != "none" else None)
-    await state.set_state(AdminForm.mgmt_date)
-    from bot.keyboards.builders import kb_use_today
-    today_str = date.today().strftime("%d.%m.%Y")
+    city_val = city if city != "none" else None
+    await state.update_data(mgmt_city=city_val)
+    
+    # Get unique projects for this city from reports to show in buttons
+    from sqlalchemy import select, distinct
+    q = select(distinct(Report.project_name))
+    if city_val: q = q.where(Report.city == city_val)
+    res = await session.execute(q)
+    projects = [p for p in res.scalars().all() if p]
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    for p in sorted(projects):
+        b.button(text=p, callback_data=f"mgmt:proj:{p}")
+    b.button(text="🌍 Для всех проектов", callback_data="mgmt:proj:all")
+    b.button(text="◀️ Назад", callback_data="adm:mgmt_expenses")
+    b.adjust(1)
+
+    await state.set_state(AdminForm.mgmt_project)
     await call.message.edit_text(
-        f"📅 Введите <b>дату</b> расхода (ДД.ММ.ГГГГ):",
-        parse_mode="HTML", reply_markup=kb_use_today(today_str)
+        "📝 <b>Выберите проект</b>, к которому относится расход,\n"
+        "или выберите «Для всех проектов»:",
+        parse_mode="HTML", reply_markup=b.as_markup()
     )
+    await call.answer()
+
+
+@router.callback_query(AdminForm.mgmt_project, F.data.startswith("mgmt:proj:"))
+async def mgmt_project_select(call: CallbackQuery, state: FSMContext):
+    proj = call.data.split(":")[2]
+    await state.update_data(mgmt_project=None if proj == "all" else proj)
+    
+    from bot.keyboards.builders import kb_mgmt_categories
+    await state.set_state(AdminForm.mgmt_category)
+    await call.message.edit_text("📂 Выберите категорию расхода:", reply_markup=kb_mgmt_categories())
+    await call.answer()
+
+
+@router.callback_query(AdminForm.mgmt_category, F.data.startswith("mgmt:cat:"))
+async def mgmt_category_select(call: CallbackQuery, state: FSMContext):
+    cat = call.data.split(":")[2]
+    await state.update_data(mgmt_category=cat)
+    await state.set_state(AdminForm.mgmt_date)
+    
+    if cat == "аренда":
+        from bot.keyboards.builders import kb_mgmt_month_select
+        today = date.today()
+        await call.message.edit_text(
+            "🏠 <b>Аренда</b>\nВыберите месяц, за который вносится оплата:",
+            parse_mode="HTML",
+            reply_markup=kb_mgmt_month_select(today.year, today.month)
+        )
+    else:
+        from bot.keyboards.builders import kb_use_today
+        today_str = date.today().strftime("%d.%m.%Y")
+        await call.message.edit_text(
+            f"📅 Категория: <b>{cat}</b>\nВведите <b>дату</b> расхода (ДД.ММ.ГГГГ):",
+            parse_mode="HTML", reply_markup=kb_use_today(today_str)
+        )
+    await call.answer()
+
+
+@router.callback_query(AdminForm.mgmt_date, F.data.startswith("mgmt:month:"))
+async def mgmt_month_select(call: CallbackQuery, state: FSMContext):
+    parts = call.data.split(":")
+    year, month = int(parts[2]), int(parts[3])
+    # Store as 1st day of month for monthly expenses
+    d = date(year, month, 1)
+    await state.update_data(mgmt_date=d.isoformat())
+    await mgmt_ask_amount(call.message, state)
     await call.answer()
 
 
 @router.callback_query(AdminForm.mgmt_date, F.data == "report:use_today")
 async def mgmt_date_today(call: CallbackQuery, state: FSMContext):
     await state.update_data(mgmt_date=date.today().isoformat())
-    await mgmt_ask_category(call.message, state)
+    await mgmt_ask_amount(call.message, state)
     await call.answer()
 
 
@@ -821,22 +873,17 @@ async def mgmt_date_input(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Неверный формат. Введите ДД.ММ.ГГГГ:"); return
     await state.update_data(mgmt_date=d.isoformat())
-    await mgmt_ask_category(message, state)
+    await mgmt_ask_amount(message, state)
 
 
-async def mgmt_ask_category(message: Message, state: FSMContext):
-    from bot.keyboards.builders import kb_mgmt_categories
-    await state.set_state(AdminForm.mgmt_category)
-    await message.answer("📂 Выберите категорию расхода:", reply_markup=kb_mgmt_categories())
-
-
-@router.callback_query(AdminForm.mgmt_category, F.data.startswith("mgmt:cat:"))
-async def mgmt_category_select(call: CallbackQuery, state: FSMContext):
-    cat = call.data.split(":")[2]
-    await state.update_data(mgmt_category=cat)
+async def mgmt_ask_amount(message: Message, state: FSMContext):
+    data = await state.get_data()
+    cat = data.get("mgmt_category", "расход")
     await state.set_state(AdminForm.mgmt_amount)
-    await call.message.edit_text(f"💰 Введите <b>сумму</b> ({cat}):", parse_mode="HTML", reply_markup=kb_back())
-    await call.answer()
+    await message.answer(f"💰 Введите <b>сумму</b> ({cat}):", parse_mode="HTML", reply_markup=kb_back())
+
+
+# Handler removed as logic moved upstream
 
 
 @router.message(AdminForm.mgmt_amount)
@@ -870,6 +917,7 @@ async def mgmt_save(message: Message, state: FSMContext, session: AsyncSession, 
     expense = ManagementExpense(
         date=date.fromisoformat(d["mgmt_date"]),
         city=d["mgmt_city"],
+        project_name=d.get("mgmt_project"),
         category=d["mgmt_category"],
         amount=d["mgmt_amount"],
         comment=d.get("mgmt_comment")

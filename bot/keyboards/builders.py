@@ -159,13 +159,34 @@ def kb_month_select(current_year: int, current_month: int, city: str = None) -> 
     return b.as_markup()
 
 
+def kb_mgmt_month_select(current_year: int, current_month: int) -> InlineKeyboardMarkup:
+    """Pick month for monthly management expenses (like Rent)."""
+    import calendar as cal
+    b = InlineKeyboardBuilder()
+    from datetime import date
+    months = []
+    y, m = current_year, current_month
+    for _ in range(6):
+        months.insert(0, (y, m))
+        m -= 1
+        if m == 0:
+            m = 12; y -= 1
+    for yr, mo in months:
+        label = f"{cal.month_abbr[mo]} {yr}"
+        b.button(text=label, callback_data=f"mgmt:month:{yr}:{mo}")
+    b.button(text="◀️ Назад", callback_data="adm:mgmt_expenses")
+    b.adjust(3, 3, 1)
+    return b.as_markup()
+
+
 def kb_monthly_report_cities() -> InlineKeyboardMarkup:
     """City picker for monthly report."""
     b = InlineKeyboardBuilder()
     b.button(text="🏙 Гомель", callback_data="period:monthly_city:gomel")
     b.button(text="🌆 Минск",  callback_data="period:monthly_city:minsk")
+    b.button(text="🌍 Все города", callback_data="period:monthly_city:all")
     b.button(text="◀️ Назад",  callback_data="adm:back")
-    b.adjust(2, 1)
+    b.adjust(2, 1, 1)
     return b.as_markup()
 
 
@@ -283,7 +304,7 @@ def kb_mgmt_categories() -> InlineKeyboardMarkup:
     b.button(text="🏦 УСН 6%",      callback_data="mgmt:cat:усн_6")
     b.button(text="⚖️ Налоги ЗП 35.6%", callback_data="mgmt:cat:налоги_зп")
     b.button(text="➕ Другое",      callback_data="mgmt:cat:другое")
-    b.button(text="◀️ Назад",       callback_data="adm:mgmt_expenses")
+    b.button(text="❌ Отмена",      callback_data="adm:back")
     b.adjust(2, 2, 2, 1)
     return b.as_markup()
 
