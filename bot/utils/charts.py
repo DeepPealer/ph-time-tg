@@ -1,4 +1,4 @@
-import io
+﻿import io
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
@@ -13,14 +13,18 @@ plt.rcParams['font.sans-serif'] = ['Inter', 'DejaVu Sans']
 plt.rcParams['axes.titlepad'] = 20
 plt.rcParams['axes.labelpad'] = 10
 
-async def generate_revenue_chart(session: "AsyncSession", days: int = 30) -> io.BytesIO:
+async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: str = None) -> io.BytesIO:
     """Generate a premium-style chart showing daily revenue."""
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
     
+    filters = [Report.date >= start_date]
+    if city:
+        filters.append(Report.city == city)
+    
     stmt = (
         select(Report.date, func.sum(Report.revenue))
-        .where(Report.date >= start_date)
+        .where(*filters)
         .group_by(Report.date)
         .order_by(Report.date)
     )
@@ -39,13 +43,13 @@ async def generate_revenue_chart(session: "AsyncSession", days: int = 30) -> io.
     # Line plot with shadows and markers
     sns.lineplot(data=df, x='date', y='revenue', ax=ax, 
                  marker='o', markersize=8, color='#4e73df', 
-                 linewidth=3, label='Выручка')
+                 linewidth=3, label='Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°')
     
     # Fill the area under the line
     ax.fill_between(df['date'], df['revenue'], color='#4e73df', alpha=0.15)
     
-    ax.set_title(f'Динамика выручки за {days} дней', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Выручка (₽)', fontsize=12)
+    ax.set_title(f'Ð”Ð¸Ð½Ð°Ð¼Ð¸ÐºÐ° Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸ Ð·Ð° {days} Ð´Ð½ÐµÐ¹', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ° (â‚½)', fontsize=12)
     ax.set_xlabel(None)
     
     # Format dates
@@ -64,11 +68,15 @@ async def generate_revenue_chart(session: "AsyncSession", days: int = 30) -> io.
     
     return buf
 
-async def generate_plan_performance_chart(session: "AsyncSession") -> io.BytesIO:
+async def generate_plan_performance_chart(session: "AsyncSession", city: str = None) -> io.BytesIO:
     """Generate a clean bar chart showing plan performance."""
     from bot.database.models import Plan
     
-    stmt_plans = select(Plan).where(Plan.is_active == True, Plan.period == 'month', Plan.project_name != None)
+    filters_plan = [Plan.is_active == True, Plan.period == 'month', Plan.project_name != None]
+    if city:
+        filters_plan.append(Plan.city == city)
+    
+    stmt_plans = select(Plan).where(*filters_plan)
     res_plans = await session.execute(stmt_plans)
     plans = res_plans.scalars().all()
     
@@ -80,31 +88,31 @@ async def generate_plan_performance_chart(session: "AsyncSession") -> io.BytesIO
     
     data_list = []
     for plan in plans:
-        stmt_rev = select(func.sum(Report.revenue)).where(
-            Report.project_name == plan.project_name,
-            Report.date >= start_of_month
-        )
+        filters_rev = [Report.project_name == plan.project_name, Report.date >= start_of_month]
+        if city:
+            filters_rev.append(Report.city == city)
+        stmt_rev = select(func.sum(Report.revenue)).where(*filters_rev)
         res_rev = await session.execute(stmt_rev)
         actual = res_rev.scalar() or 0
         pct = (actual / plan.plan_amount * 100) if plan.plan_amount else 0
-        data_list.append({'Проект': plan.project_name, 'Выполнение': pct})
+        data_list.append({'ÐŸÑ€Ð¾ÐµÐºÑ‚': plan.project_name, 'Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ': pct})
         
     df = pd.DataFrame(data_list)
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Dynamic coloring based on performance
-    colors = ['#1cc88a' if p >= 100 else '#f6c23e' if p >= 70 else '#e74a3b' for p in df['Выполнение']]
+    colors = ['#1cc88a' if p >= 100 else '#f6c23e' if p >= 70 else '#e74a3b' for p in df['Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ']]
     
-    bars = sns.barplot(data=df, x='Проект', y='Выполнение', palette=colors, ax=ax, hue='Проект', legend=False)
+    bars = sns.barplot(data=df, x='ÐŸÑ€Ð¾ÐµÐºÑ‚', y='Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ', palette=colors, ax=ax, hue='ÐŸÑ€Ð¾ÐµÐºÑ‚', legend=False)
     
-    ax.axhline(100, color='#e74a3b', linestyle='--', alpha=0.6, label='Цель (100%)', linewidth=2)
-    ax.set_title(f'Выполнение планов: {today.strftime("%B %Y")}', fontsize=18, fontweight='bold')
-    ax.set_ylabel('% выполнения', fontsize=12)
-    ax.set_ylim(0, max(df['Выполнение'].max() + 15, 115))
+    ax.axhline(100, color='#e74a3b', linestyle='--', alpha=0.6, label='Ð¦ÐµÐ»ÑŒ (100%)', linewidth=2)
+    ax.set_title(f'Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ Ð¿Ð»Ð°Ð½Ð¾Ð²: {today.strftime("%B %Y")}', fontsize=18, fontweight='bold')
+    ax.set_ylabel('% Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ', fontsize=12)
+    ax.set_ylim(0, max(df['Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ'].max() + 15, 115))
     
     # Text labels on bars
-    for i, p in enumerate(df['Выполнение']):
+    for i, p in enumerate(df['Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ']):
         ax.text(i, p + 2, f'{p:.1f}%', ha='center', fontweight='bold', size=11)
         
     sns.despine()
@@ -117,17 +125,21 @@ async def generate_plan_performance_chart(session: "AsyncSession") -> io.BytesIO
     
     return buf
 
-async def generate_yearly_revenue_chart(session: "AsyncSession") -> io.BytesIO:
+async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = None) -> io.BytesIO:
     """Generate a monthly revenue breakdown chart for the current year."""
     today = date.today()
     start_year = today.replace(month=1, day=1)
+    
+    filters = [Report.date >= start_year]
+    if city:
+        filters.append(Report.city == city)
     
     stmt = (
         select(
             func.extract('month', Report.date).label('month'),
             func.sum(Report.revenue).label('revenue')
         )
-        .where(Report.date >= start_year)
+        .where(*filters)
         .group_by(func.extract('month', Report.date))
         .order_by('month')
     )
@@ -138,8 +150,8 @@ async def generate_yearly_revenue_chart(session: "AsyncSession") -> io.BytesIO:
         return None
     
     month_names = {
-        1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
-        7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек'
+        1: 'Ð¯Ð½Ð²', 2: 'Ð¤ÐµÐ²', 3: 'ÐœÐ°Ñ€', 4: 'ÐÐ¿Ñ€', 5: 'ÐœÐ°Ð¹', 6: 'Ð˜ÑŽÐ½',
+        7: 'Ð˜ÑŽÐ»', 8: 'ÐÐ²Ð³', 9: 'Ð¡ÐµÐ½', 10: 'ÐžÐºÑ‚', 11: 'ÐÐ¾Ñ', 12: 'Ð”ÐµÐº'
     }
     
     df = pd.DataFrame(data, columns=['month', 'revenue'])
@@ -150,8 +162,8 @@ async def generate_yearly_revenue_chart(session: "AsyncSession") -> io.BytesIO:
     # Use a gradient-like palette
     sns.barplot(data=df, x='month_name', y='revenue', palette="viridis", ax=ax, hue='month_name', legend=False)
     
-    ax.set_title(f'Годовая выручка: {today.year}', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Сумма (₽)', fontsize=12)
+    ax.set_title(f'Ð“Ð¾Ð´Ð¾Ð²Ð°Ñ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ°: {today.year}', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Ð¡ÑƒÐ¼Ð¼Ð° (â‚½)', fontsize=12)
     ax.set_xlabel(None)
     
     # Label formatting
@@ -168,3 +180,5 @@ async def generate_yearly_revenue_chart(session: "AsyncSession") -> io.BytesIO:
     plt.close(fig)
     
     return buf
+
+

@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    logger.info("Initializing database…")
+    logger.info("Initializing databaseâ€¦")
     await init_db()
 
     bot = Bot(
@@ -33,22 +33,22 @@ async def main() -> None:
     dp.message.middleware(DatabaseMiddleware())
     dp.callback_query.middleware(DatabaseMiddleware())
 
-    # Register routers (order matters — common last so FSM states take priority)
+    # Register routers (order matters â€” common first for global commands)
+    dp.include_router(common.router)
     dp.include_router(report.router)
     dp.include_router(admin.router)
     dp.include_router(cabinet.router)
-    dp.include_router(common.router)
 
-    logger.info("Starting scheduler…")
+    logger.info("Starting schedulerâ€¦")
     scheduler = setup_scheduler(bot)
     scheduler.start()
 
-    logger.info("Starting bot…")
+    logger.info("Starting botâ€¦")
     while True:
         try:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         except Exception as e:
-            logger.error(f"Бот упал с ошибкой: {e}. Перезапуск через 5 секунд…")
+            logger.error(f"Ð‘Ð¾Ñ‚ ÑƒÐ¿Ð°Ð» Ñ Ð¾ÑˆÐ¸Ð±ÐºÐ¾Ð¹: {e}. ÐŸÐµÑ€ÐµÐ·Ð°Ð¿ÑƒÑÐº Ñ‡ÐµÑ€ÐµÐ· 5 ÑÐµÐºÑƒÐ½Ð´â€¦")
             await asyncio.sleep(5)
 
 
@@ -57,3 +57,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+

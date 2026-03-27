@@ -1,4 +1,4 @@
-from bot.database.models import AuditLog
+﻿from bot.database.models import AuditLog
 
 async def log_action(session: "AsyncSession", admin_id: int, action: str, details: str = None):
     """Log an administrative action to the database."""
@@ -9,3 +9,4 @@ async def log_action(session: "AsyncSession", admin_id: int, action: str, detail
     )
     session.add(log)
     await session.commit()
+

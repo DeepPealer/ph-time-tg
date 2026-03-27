@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Any, Awaitable
+﻿from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
 from sqlalchemy import select
@@ -52,9 +52,9 @@ class DatabaseMiddleware(BaseMiddleware):
                         await session.commit()
                     data["is_new_user"] = False
 
-                # Auto-promote pre-configured admins
+                # Auto-promote pre-configured admins ONLY if they are pending or inactive
                 if tg_user.id in config.admin_ids and (
-                    db_user.role != UserRole.admin or not db_user.is_active
+                    db_user.role == UserRole.pending or not db_user.is_active
                 ):
                     db_user.role = UserRole.admin
                     db_user.is_active = True
@@ -63,3 +63,4 @@ class DatabaseMiddleware(BaseMiddleware):
 
             data["db_user"] = db_user
             return await handler(event, data)
+

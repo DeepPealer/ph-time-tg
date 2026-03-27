@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from datetime import date
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
@@ -36,7 +36,7 @@ async def send_report_reminders(bot: Bot):
                 try:
                     await bot.send_message(
                         user.telegram_id,
-                        "🔔 <b>Напоминание!</b>\n\nВы еще не сдали сегодняшний отчет. Пожалуйста, сделайте это до конца дня.",
+                        "ðŸ”” <b>ÐÐ°Ð¿Ð¾Ð¼Ð¸Ð½Ð°Ð½Ð¸Ðµ!</b>\n\nÐ’Ñ‹ ÐµÑ‰Ðµ Ð½Ðµ ÑÐ´Ð°Ð»Ð¸ ÑÐµÐ³Ð¾Ð´Ð½ÑÑˆÐ½Ð¸Ð¹ Ð¾Ñ‚Ñ‡ÐµÑ‚. ÐŸÐ¾Ð¶Ð°Ð»ÑƒÐ¹ÑÑ‚Ð°, ÑÐ´ÐµÐ»Ð°Ð¹Ñ‚Ðµ ÑÑ‚Ð¾ Ð´Ð¾ ÐºÐ¾Ð½Ñ†Ð° Ð´Ð½Ñ.",
                         parse_mode="HTML",
                         reply_markup=menu_employee()
                     )
@@ -53,3 +53,4 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(send_report_reminders, 'cron', hour=20, minute=0, args=[bot])
     
     return scheduler
+

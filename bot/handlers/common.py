@@ -1,80 +1,246 @@
-from aiogram import Router, F, Bot
+﻿from aiogram import Router, F, Bot
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from bot.database.models import User, UserRole
-from bot.keyboards.builders import menu_employee, menu_admin, kb_pending_user
+from bot.keyboards.builders import menu_employee, menu_manager, menu_admin, kb_pending_user
 from bot.config import config
 
 router = Router()
 
 
-def _get_menu(role: str):
-    return menu_admin() if role == "admin" else menu_employee()
+class NameInputForm(StatesGroup):
+    waiting_name = State()
 
+
+def _get_menu(role: str):
+    if role == "admin":
+        return menu_admin()
+    if role == "manager":
+        return menu_manager()
+    return menu_employee()
+
+
+# â”€â”€â”€ /start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, db_user: User, is_new_user: bool, bot: Bot, session):
-    if db_user.role == UserRole.pending:
-        await message.answer(
-            "👋 Привет! Ваша заявка на доступ отправлена администратору.\n"
-            "Ожидайте подтверждения."
-        )
-        # Notify all admins
-        admins = await session.execute(
-            select(User).where(User.role == UserRole.admin, User.is_active == True)
-        )
-        admin_mention = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
-        text = (
-            f"📥 <b>Новая заявка на доступ!</b>\n\n"
-            f"👤 Имя: {db_user.full_name}\n"
-            f"📎 Аккаунт: {admin_mention}\n"
-            f"🆔 Telegram ID: <code>{db_user.telegram_id}</code>"
-        )
-        for admin in admins.scalars().all():
-            try:
-                await bot.send_message(
-                    admin.telegram_id, text,
-                    parse_mode="HTML",
-                    reply_markup=kb_pending_user(db_user.telegram_id)
-                )
-            except Exception:
-                pass
+async def cmd_start(message: Message, db_user: User, is_new_user: bool, bot: Bot,
+                    session, state: FSMContext):
+    await state.clear()
 
-        if config.admin_chat_id:
-            try:
-                await bot.send_message(config.admin_chat_id, text, parse_mode="HTML",
-                                        reply_markup=kb_pending_user(db_user.telegram_id))
-            except Exception:
-                pass
+    # New or pending user without a display_name â†’ ask for their name
+    if db_user.role == UserRole.pending and not db_user.display_name:
+        await state.set_state(NameInputForm.waiting_name)
+        await message.answer(
+            "ðŸ‘‹ Ð”Ð¾Ð±Ñ€Ð¾ Ð¿Ð¾Ð¶Ð°Ð»Ð¾Ð²Ð°Ñ‚ÑŒ!\n\n"
+            "Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÑÐ²Ð¾ÑŽ <b>Ñ„Ð°Ð¼Ð¸Ð»Ð¸ÑŽ</b>, Ñ‡Ñ‚Ð¾Ð±Ñ‹ Ñ€ÑƒÐºÐ¾Ð²Ð¾Ð´ÑÑ‚Ð²Ð¾ Ð¼Ð¾Ð³Ð»Ð¾ Ð²Ð°Ñ Ð¸Ð´ÐµÐ½Ñ‚Ð¸Ñ„Ð¸Ñ†Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ:\n"
+            "<i>(ÐÐ°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: Ð˜Ð²Ð°Ð½Ð¾Ð²)</i>",
+            parse_mode="HTML"
+        )
         return
 
-    name = db_user.full_name.split()[0] if db_user.full_name else "!"
-    role_label = "Администратор" if db_user.role == UserRole.admin else "Сотрудник"
+    # Pending but name already given â€” just wait
+    if db_user.role == UserRole.pending:
+        await message.answer(
+            "â³ Ð’Ð°ÑˆÐ° Ð·Ð°ÑÐ²ÐºÐ° Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð° Ð°Ð´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€Ñƒ.\n"
+            "ÐžÐ¶Ð¸Ð´Ð°Ð¹Ñ‚Ðµ Ð¿Ð¾Ð´Ñ‚Ð²ÐµÑ€Ð¶Ð´ÐµÐ½Ð¸Ñ."
+        )
+        return
+
+    name = db_user.display_name or db_user.full_name.split()[0]
+    role_labels = {
+        "admin": "ÐÐ´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€",
+        "manager": "Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹",
+        "employee": "Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº",
+    }
+    role_label = role_labels.get(db_user.role.value, "")
     await message.answer(
-        f"👋 Привет, {name}! ({role_label})\n\nВыберите действие:",
+        f"ðŸ‘‹ ÐŸÑ€Ð¸Ð²ÐµÑ‚, {name}! ({role_label})\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ðµ:",
         reply_markup=_get_menu(db_user.role.value)
     )
 
 
-@router.message(Command("help"))
-async def cmd_help(message: Message, db_user: User):
+# â”€â”€â”€ Name input FSM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.message(NameInputForm.waiting_name)
+async def process_name_input(message: Message, state: FSMContext, db_user: User,
+                              bot: Bot, session):
+    name = message.text.strip()
+    if len(name) < 2:
+        await message.answer("âŒ Ð¡Ð»Ð¸ÑˆÐºÐ¾Ð¼ ÐºÐ¾Ñ€Ð¾Ñ‚ÐºÐ¾. Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ„Ð°Ð¼Ð¸Ð»Ð¸ÑŽ:")
+        return
+    if len(name) > 100:
+        await message.answer("âŒ Ð¡Ð»Ð¸ÑˆÐºÐ¾Ð¼ Ð´Ð»Ð¸Ð½Ð½Ð¾. ÐŸÐ¾Ð¿Ñ€Ð¾Ð±ÑƒÐ¹Ñ‚Ðµ ÐµÑ‰Ñ‘ Ñ€Ð°Ð·:")
+        return
+
+    db_user.display_name = name
+    await session.commit()
+    await state.clear()
+
     await message.answer(
-        "ℹ️ <b>Справка</b>\n\n"
-        "• <b>Сдать отчет</b> — пошаговое заполнение ежедневного отчёта\n"
-        "• <b>Админ-панель</b> — управление командой, отчёты, настройки ЗП\n\n"
-        "Для отмены любого действия отправьте /cancel",
+        f"âœ… ÐžÑ‚Ð»Ð¸Ñ‡Ð½Ð¾, <b>{name}</b>!\n\n"
+        "Ð’Ð°ÑˆÐ° Ð·Ð°ÑÐ²ÐºÐ° Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð° Ð°Ð´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€Ñƒ. ÐžÐ¶Ð¸Ð´Ð°Ð¹Ñ‚Ðµ Ð¿Ð¾Ð´Ñ‚Ð²ÐµÑ€Ð¶Ð´ÐµÐ½Ð¸Ñ.",
+        parse_mode="HTML"
+    )
+
+    # Notify all admins and managers
+    from sqlalchemy import or_
+    stmt = select(User).where(
+        or_(User.role == UserRole.admin, User.role == UserRole.manager),
+        User.is_active == True
+    )
+    receivers = await session.execute(stmt)
+    receivers = receivers.scalars().all()
+    admin_mention = f"@{message.from_user.username}" if message.from_user.username else name
+    text = (
+        f"ðŸ“¥ <b>ÐÐ¾Ð²Ð°Ñ Ð·Ð°ÑÐ²ÐºÐ° Ð½Ð° Ð´Ð¾ÑÑ‚ÑƒÐ¿!</b>\n\n"
+        f"ðŸ‘¤ Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ: <b>{name}</b>\n"
+        f"ðŸ“Ž ÐÐºÐºÐ°ÑƒÐ½Ñ‚: {admin_mention}\n"
+        f"ðŸ†” Telegram ID: <code>{db_user.telegram_id}</code>"
+    )
+    markup = kb_pending_user(db_user.telegram_id)
+    for admin in admins.scalars().all():
+        try:
+            await bot.send_message(admin.telegram_id, text, parse_mode="HTML", reply_markup=markup)
+        except Exception:
+            pass
+
+    if config.admin_chat_id:
+        try:
+            await bot.send_message(config.admin_chat_id, text, parse_mode="HTML", reply_markup=markup)
+        except Exception:
+            pass
+
+
+# â”€â”€â”€ /help and Ð˜Ð½ÑÑ‚Ñ€ÑƒÐºÑ†Ð¸Ñ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.message(Command("help"))
+@router.message(F.text == "ðŸ“– Ð˜Ð½ÑÑ‚Ñ€ÑƒÐºÑ†Ð¸Ñ")
+async def cmd_help(message: Message, db_user: User):
+    if db_user.role == UserRole.admin:
+        text = (
+            "ðŸ“– <b>ÐŸÐžÐ”Ð ÐžÐ‘ÐÐÐ¯ Ð˜ÐÐ¡Ð¢Ð Ð£ÐšÐ¦Ð˜Ð¯ Ð”Ð›Ð¯ ÐÐ”ÐœÐ˜ÐÐ˜Ð¡Ð¢Ð ÐÐ¢ÐžÐ Ð</b>\n\n"
+            "ðŸ—‚ <b>Ð“Ð›ÐÐ’ÐÐžÐ• ÐœÐ•ÐÐ® (ÐšÐ½Ð¾Ð¿ÐºÐ¸ Ð²Ð½Ð¸Ð·Ñƒ ÑÐºÑ€Ð°Ð½Ð°)</b>\n\n"
+            "1ï¸âƒ£ <b>[ðŸ“‹ Ð¡Ð´Ð°Ñ‚ÑŒ Ð¾Ñ‚Ñ‡ÐµÑ‚]</b>\n"
+            "Ð¢Ð¾Ñ‚ Ð¶Ðµ Ñ„ÑƒÐ½ÐºÑ†Ð¸Ð¾Ð½Ð°Ð», Ñ‡Ñ‚Ð¾ Ð¸ Ñƒ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¾Ð² (Ð´Ð»Ñ Ð¿Ð¾Ð´Ð¼ÐµÐ½Ñ‹ Ð¸Ð»Ð¸ ÑÐ°Ð¼Ð¾ÑÑ‚Ð¾ÑÑ‚ÐµÐ»ÑŒÐ½Ð¾Ð³Ð¾ Ð²Ð²Ð¾Ð´Ð°).\n"
+            "â€¢ ÐŸÐ¾ÑˆÐ°Ð³Ð¾Ð²Ñ‹Ð¹ Ð²Ð²Ð¾Ð´: Ð“Ð¾Ñ€Ð¾Ð´ âž¡ï¸ Ð”Ð°Ñ‚Ð° âž¡ï¸ ÐŸÑ€Ð¾ÐµÐºÑ‚.\n"
+            "â€¢ Ð’Ð²Ð¾Ð´ Ñ„Ð¸Ð½Ð°Ð½ÑÐ¾Ð²Ñ‹Ñ… Ð´Ð°Ð½Ð½Ñ‹Ñ…: Ð¡Ð¼ÐµÐ½Ñ‹ (ÐºÐ¾Ð»-Ð²Ð¾), Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°, ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ, Ð‘ÐµÐ·Ð½Ð°Ð», Ð¥Ð¾Ð·. Ð Ð°ÑÑ…Ð¾Ð´Ñ‹, Ð—ÐŸ Ð¡Ñ‚Ð°Ð¶ÐµÑ€Ð°, ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº (ÐšÐ°ÑÑÐ°), ÐŸÐ¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»Ð¸ Ð¸ ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹.\n"
+            "â€¢ ÐÐ° ÑÑ‚Ð°Ð¿Ðµ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¸ Ð¼Ð¾Ð¶Ð½Ð¾ Ð½Ð°Ð¶Ð°Ñ‚ÑŒ <b>Â«âœï¸ Ð ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒÂ»</b> Ð¸ Ð¸ÑÐ¿Ñ€Ð°Ð²Ð¸Ñ‚ÑŒ Ð»ÑŽÐ±Ð¾Ðµ Ð¿Ð¾Ð»Ðµ. ÐŸÐ¾ÑÐ»Ðµ ÑÑ‚Ð¾Ð³Ð¾ ÐžÐ‘Ð¯Ð—ÐÐ¢Ð•Ð›Ð¬ÐÐž Ð½Ð°Ð¶Ð¼Ð¸Ñ‚Ðµ <b>Â«âœ… ÐžÑ‚Ð¿Ñ€Ð°Ð²Ð¸Ñ‚ÑŒÂ»</b>.\n\n"
+
+            "2ï¸âƒ£ <b>[âš™ï¸ ÐÐ´Ð¼Ð¸Ð½-Ð¿Ð°Ð½ÐµÐ»ÑŒ]</b> â€” ÐžÑÐ½Ð¾Ð²Ð½Ð¾Ð¹ Ñ€Ð°Ð·Ð´ÐµÐ» ÑƒÐ¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ñ Ð±Ð¸Ð·Ð½ÐµÑÐ¾Ð¼.\n\n"
+            "ðŸ“Š <b>[ÐžÑ‚Ñ‡Ñ‘Ñ‚Ñ‹]</b>\n"
+            "â€¢ <b>ÐœÐµÑÑÑ‡Ð½Ñ‹Ð¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚:</b> Ð“ÐµÐ½ÐµÑ€Ð°Ñ†Ð¸Ñ Ð´ÐµÑ‚Ð°Ð»ÑŒÐ½Ð¾Ð³Ð¾ Excel-Ð¾Ñ‚Ñ‡ÐµÑ‚Ð° Ñ Ð¿Ð¾Ð»Ð½Ñ‹Ð¼ Ñ„Ð¸Ð½Ð¾Ð¼ Ð·Ð° Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ñ‹Ð¹ Ð¼ÐµÑÑÑ† (ÑÐ²Ð¾Ð´ÐºÐ° Ð¿Ð¾ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐµ, Ð´Ð½ÑÐ¼, Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°Ð¼, Ñ…Ð¾Ð·. Ñ€Ð°ÑÑ…Ð¾Ð´Ð°Ð¼ Ð¸ Ð—ÐŸ ÑÑ‚Ð°Ð¶ÐµÑ€Ð¾Ð²). Ð’Ð¾Ð·Ð¼Ð¾Ð¶ÐµÐ½ Ð²Ñ‹Ð±Ð¾Ñ€ Ð¿Ð¾ Ð³Ð¾Ñ€Ð¾Ð´Ð°Ð¼.\n"
+            "â€¢ <b>ÐÐ½Ð°Ð»Ð¸Ñ‚Ð¸ÐºÐ° (Ð“Ñ€Ð°Ñ„Ð¸ÐºÐ¸):</b> ÐŸÐ¾ÑÑ‚Ñ€Ð¾ÐµÐ½Ð¸Ðµ Ð²Ð¸Ð·ÑƒÐ°Ð»ÑŒÐ½Ñ‹Ñ… Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ¾Ð² (Ð·Ð° 30 Ð´Ð½ÐµÐ¹, Ð¿Ð¾ Ð¿Ð»Ð°Ð½Ñƒ Ð·Ð° Ð¼ÐµÑÑÑ†, ÑÐµÐ·Ð¾Ð½Ð½Ð¾ÑÑ‚ÑŒ Ð·Ð° Ð³Ð¾Ð´) Ñ Ñ„Ð¸Ð»ÑŒÑ‚Ñ€Ð°Ñ†Ð¸ÐµÐ¹ Ð¿Ð¾ Ð³Ð¾Ñ€Ð¾Ð´Ð°Ð¼.\n\n"
+
+            "ðŸ‘¥ <b>[Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¸]</b>\n"
+            "â€¢ <b>[ðŸ“¥ Ð—Ð°ÑÐ²ÐºÐ¸]:</b> ÐžÐ´Ð¾Ð±Ñ€ÐµÐ½Ð¸Ðµ Ð½Ð¾Ð²Ñ‹Ñ… Ð¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÐµÐ¹ â€” Ð²Ñ‹Ð±Ð¾Ñ€ Ñ€Ð¾Ð»Ð¸ Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº Ð¸Ð»Ð¸ Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹.\n"
+            "â€¢ <b>ÐŸÑ€Ð¾Ñ„Ð¸Ð»ÑŒ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°:</b> ÐÐ°Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð³Ð¾Ñ€Ð¾Ð´Ð°, Ð¿Ñ€Ð°Ð² ÐÐ´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€Ð° (ðŸ‘‘) Ð¸Ð»Ð¸ ÑƒÐ´Ð°Ð»ÐµÐ½Ð¸Ðµ (ðŸ—‘).\n\n"
+
+            "ðŸ“‹ <b>[ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð²]</b>\n"
+            "â€¢ Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð·Ð° ÑÐµÐ³Ð¾Ð´Ð½Ñ. ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ð»ÑŽÐ±Ð¾Ð³Ð¾ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð°, ÐºÐ½Ð¾Ð¿ÐºÐ° Â«âœ… ÐŸÑ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð¾Â» Ð¸ Â«âœï¸ Ð ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒÂ» (Ð¸Ð·Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ Ð»ÑŽÐ±Ñ‹Ðµ Ð¿Ð¾Ð»Ñ Ð¾Ñ‚ Ð¸Ð¼ÐµÐ½Ð¸ Ð»ÑŽÐ±Ð¾Ð³Ð¾ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ° Ð·Ð° Ð»ÑŽÐ±ÑƒÑŽ Ð´Ð°Ñ‚Ñƒ).\n\n"
+
+            "ðŸŽ¯ <b>[ÐŸÐ»Ð°Ð½Ñ‹ Ð¿Ñ€Ð¾Ð´Ð°Ð¶]</b>\n"
+            "â€¢ Ð¡Ð¾Ð·Ð´Ð°Ð½Ð¸Ðµ Ð´ÐµÐ½ÐµÐ¶Ð½Ñ‹Ñ… Ð¿Ð»Ð°Ð½Ð¾Ð² Ð½Ð° Ð´ÐµÐ½ÑŒ Ð¸Ð»Ð¸ Ð¼ÐµÑÑÑ†. Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÑŽÑ‚ÑÑ Ð´Ð»Ñ Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð¸Ñ‡ÐµÑÐºÐ¾Ð³Ð¾ Ñ€Ð°ÑÑ‡ÐµÑ‚Ð° Ð¿Ñ€ÐµÐ¼Ð¸Ð¹.\n\n"
+
+            "ðŸ“ˆ <b>[Ð¡Ñ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÐ° Ð¿Ð»Ð°Ð½Ð¾Ð²]</b>\n"
+            "â€¢ Ð‘Ñ‹ÑÑ‚Ñ€Ñ‹Ð¹ ÑÑ€ÐµÐ· Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ Ñ‚ÐµÐºÑƒÑ‰Ð¸Ñ… Ð°ÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ… Ð¿Ð»Ð°Ð½Ð¾Ð² (Ð´Ð¾Ñ…Ð¾Ð´ / Ñ†ÐµÐ»ÑŒ).\n\n"
+
+            "ðŸ’¼ <b>[Ð—ÐŸ Ð¼ÐµÐ½ÐµÐ´Ð¶ÐµÑ€Ð°]</b>\n"
+            "â€¢ ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ñ€Ð°ÑÑ‡ÐµÑ‚Ð½Ð¾Ð³Ð¾ Ð»Ð¸ÑÑ‚Ð° Ð—ÐŸ Ð¼ÐµÐ½ÐµÐ´Ð¶ÐµÑ€Ð° Ð·Ð° Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¼ÐµÑÑÑ† Ð½Ð° Ð¾ÑÐ½Ð¾Ð²Ðµ Ð¾Ð±Ð¾Ñ€Ð¾Ñ‚Ð° Ð¸ Ð¿Ð»Ð°Ð½Ð¾Ð² (ÑÐµÑ‚ÐºÐ° 1% - 4% Ð¾Ñ‚ Ð¾Ð±Ð¾Ñ€Ð¾Ñ‚Ð°).\n\n"
+
+            "ðŸ“‚ <b>[Ð£Ð¿Ñ€. Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹]</b>\n"
+            "â€¢ Ð’Ð½ÐµÑÐµÐ½Ð¸Ðµ ÐµÐ¶ÐµÐ¼ÐµÑÑÑ‡Ð½Ñ‹Ñ… Ð¸Ð·Ð´ÐµÑ€Ð¶ÐµÐº (ÐÑ€ÐµÐ½Ð´Ð°, ÐÐ°Ð»Ð¾Ð³Ð¸, Ð¢ÐµÑ…Ð½Ð¸ÐºÐ°). Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°ÑŽÑ‚ÑÑ Ð¸Ð· Ð¾Ð±Ñ‰ÐµÐ¹ Ð¿Ñ€Ð¸Ð±Ñ‹Ð»Ð¸ Ð² Ð¾Ñ‚Ñ‡ÐµÑ‚Ð°Ñ….\n\n"
+
+            "ðŸ’¡ <b>Ð’ÐÐ–ÐÐžÐ• ÐŸÐ ÐÐ’Ð˜Ð›Ðž:</b>\n"
+            "ÐšÐ¾Ð¼Ð°Ð½Ð´Ð° /cancel Ð¼Ð¾Ð¼ÐµÐ½Ñ‚Ð°Ð»ÑŒÐ½Ð¾ Ð¾Ñ‚Ð¼ÐµÐ½ÑÐµÑ‚ Ð»ÑŽÐ±Ð¾Ðµ Ñ‚ÐµÐºÑƒÑ‰ÐµÐµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ðµ (Ð²Ð²Ð¾Ð´ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð¸Ð»Ð¸ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÑƒ)."
+        )
+    elif db_user.role == UserRole.manager:
+        text = (
+            "ðŸ“– <b>ÐŸÐžÐ”Ð ÐžÐ‘ÐÐÐ¯ Ð˜ÐÐ¡Ð¢Ð Ð£ÐšÐ¦Ð˜Ð¯ Ð”Ð›Ð¯ Ð£ÐŸÐ ÐÐ’Ð›Ð¯Ð®Ð©Ð•Ð“Ðž</b>\n\n"
+            "ðŸ—‚ <b>Ð“Ð›ÐÐ’ÐÐžÐ• ÐœÐ•ÐÐ® (ÐšÐ½Ð¾Ð¿ÐºÐ¸ Ð²Ð½Ð¸Ð·Ñƒ ÑÐºÑ€Ð°Ð½Ð°)</b>\n\n"
+            "1ï¸âƒ£ <b>[ðŸ“‹ Ð¡Ð´Ð°Ñ‚ÑŒ Ð¾Ñ‚Ñ‡ÐµÑ‚]</b>\n"
+            "Ð’Ñ‹ Ð¼Ð¾Ð¶ÐµÑ‚Ðµ ÑÐ´Ð°Ð²Ð°Ñ‚ÑŒ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ñ‹ Ð·Ð° Ð»ÑŽÐ±ÑƒÑŽ Ð´Ð°Ñ‚Ñƒ (Ð² Ð¾Ñ‚Ð»Ð¸Ñ‡Ð¸Ðµ Ð¾Ñ‚ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¾Ð²).\n\n"
+
+            "2ï¸âƒ£ <b>[âš™ï¸ ÐŸÐ°Ð½ÐµÐ»ÑŒ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾]</b> â€” Ð’Ð°Ñˆ Ð¾ÑÐ½Ð¾Ð²Ð½Ð¾Ð¹ Ñ€Ð°Ð±Ð¾Ñ‡Ð¸Ð¹ Ñ€Ð°Ð·Ð´ÐµÐ».\n\n"
+            "ðŸ“‹ <b>[ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð²]</b>\n"
+            "â€¢ Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð·Ð° ÑÐµÐ³Ð¾Ð´Ð½Ñ Ð¾Ñ‚ Ð²ÑÐµÑ… ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¾Ð².\n"
+            "â€¢ ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ð´ÐµÑ‚Ð°Ð»ÐµÐ¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð° Ð¸ Ð½Ð°Ð¶Ð°Ñ‚Ð¸Ðµ Â«âœ… ÐŸÑ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð¾Â» Ð¿Ð¾ÑÐ»Ðµ ÑÐ²ÐµÑ€ÐºÐ¸.\n\n"
+
+            "ðŸ’¼ <b>[ÐœÐ¾Ñ Ð—ÐŸ]</b>\n"
+            "â€¢ Ð’Ð°Ñˆ Ð»Ð¸Ñ‡Ð½Ñ‹Ð¹ Ñ€Ð°ÑÑ‡Ñ‘Ñ‚Ð½Ñ‹Ð¹ Ð»Ð¸ÑÑ‚ Ð·Ð° Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¼ÐµÑÑÑ†. Ð”Ð¾ÑÑ‚ÑƒÐ¿ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ðº ÑÐ²Ð¾Ð¸Ð¼ Ð´Ð°Ð½Ð½Ñ‹Ð¼.\n\n"
+
+            "ðŸ“‚ <b>[Ð£Ð¿Ñ€Ð°Ð²Ð». Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹]</b>\n"
+            "â€¢ Ð’Ð½ÐµÑÐµÐ½Ð¸Ðµ ÐµÐ¶ÐµÐ¼ÐµÑÑÑ‡Ð½Ñ‹Ñ… Ñ€Ð°ÑÑ…Ð¾Ð´Ð¾Ð² Ð¿Ð¾ Ð¾Ð±ÑŠÐµÐºÑ‚Ð°Ð¼ (Ð°Ñ€ÐµÐ½Ð´Ð°, Ð½Ð°Ð»Ð¾Ð³Ð¸, Ñ‚ÐµÑ…Ð½Ð¸ÐºÐ°).\n\n"
+
+            "ðŸ“Š <b>[ÐÐ½Ð°Ð»Ð¸Ñ‚Ð¸ÐºÐ°]</b>\n"
+            "â€¢ ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ¾Ð² Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸ Ð¸ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ Ð¿Ð»Ð°Ð½Ð¾Ð² Ð¿Ð¾ Ð³Ð¾Ñ€Ð¾Ð´Ð°Ð¼.\n\n"
+
+            "ðŸ’¡ ÐšÐ¾Ð¼Ð°Ð½Ð´Ð° /cancel Ð¾Ñ‚Ð¼ÐµÐ½ÑÐµÑ‚ Ð»ÑŽÐ±Ð¾Ðµ Ñ‚ÐµÐºÑƒÑ‰ÐµÐµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ðµ."
+        )
+    else:
+        text = (
+            "ðŸ“– <b>ÐŸÐžÐ”Ð ÐžÐ‘ÐÐÐ¯ Ð˜ÐÐ¡Ð¢Ð Ð£ÐšÐ¦Ð˜Ð¯ Ð”Ð›Ð¯ Ð¡ÐžÐ¢Ð Ð£Ð”ÐÐ˜ÐšÐ</b>\n\n"
+
+            "ðŸ—‚ <b>Ð“Ð›ÐÐ’ÐÐžÐ• ÐœÐ•ÐÐ® (ÐšÐ½Ð¾Ð¿ÐºÐ¸ Ð²Ð½Ð¸Ð·Ñƒ ÑÐºÑ€Ð°Ð½Ð°)</b>\n\n"
+
+            "1ï¸âƒ£ <b>[ðŸ“‹ Ð¡Ð´Ð°Ñ‚ÑŒ Ð¾Ñ‚Ñ‡ÐµÑ‚]</b>\n"
+            "ÐžÐ±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾ Ð½Ð°Ð¶Ð¸Ð¼Ð°Ð¹Ñ‚Ðµ Ð² ÐºÐ¾Ð½Ñ†Ðµ ÐºÐ°Ð¶Ð´Ð¾Ð¹ Ñ€Ð°Ð±Ð¾Ñ‡ÐµÐ¹ ÑÐ¼ÐµÐ½Ñ‹!\n"
+            "â€¢ <b>Ð”Ð°Ñ‚Ð°/ÐŸÑ€Ð¾ÐµÐºÑ‚:</b> ÐžÑ‚Ñ‡Ñ‘Ñ‚ Ð²ÑÐµÐ³Ð´Ð° ÑÐ´Ð°Ñ‘Ñ‚ÑÑ Ð·Ð° Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð´ÐµÐ½ÑŒ.\n"
+            "â€¢ <b>ÐšÐ¾Ð»-Ð²Ð¾ Ñ‡ÐµÐ»Ð¾Ð²ÐµÐº:</b> Ð¡ÐºÐ¾Ð»ÑŒÐºÐ¾ Ñ„Ð¾Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð¾Ð² Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð»Ð¾ (Ð²Ð»Ð¸ÑÐµÑ‚ Ð½Ð° Ñ€Ð°ÑÑ‡ÐµÑ‚ Ð±Ð¾Ð½ÑƒÑÐ°).\n"
+            "â€¢ <b>Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°:</b> ÐžÐ‘Ð©ÐÐ¯ ÑÑƒÐ¼Ð¼Ð° Ð·Ð° Ð´ÐµÐ½ÑŒ (ÐÐ°Ð» + Ð¢ÐµÑ€Ð¼Ð¸Ð½Ð°Ð»).\n"
+            "â€¢ <b>ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ/Ð‘ÐµÐ·Ð½Ð°Ð»:</b> Ð Ð°Ð·Ð´ÐµÐ»ÐµÐ½Ð¸Ðµ ÑÑƒÐ¼Ð¼Ñ‹ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸ Ð¿Ð¾ ÑÐ¿Ð¾ÑÐ¾Ð±Ñƒ Ð¾Ð¿Ð»Ð°Ñ‚Ñ‹.\n"
+            "â€¢ <b>Ð¥Ð¾Ð·. Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹ Ð¸Ð· ÐºÐ°ÑÑÑ‹:</b> Ð¡ÑƒÐ¼Ð¼Ð° Ð½Ð° Ð²Ð¾Ð´Ñƒ, Ð¿Ð°ÐºÐµÑ‚Ñ‹ Ð¸ Ñ‚.Ð´. (ÐµÑÐ»Ð¸ Ð½Ðµ Ð±Ñ€Ð°Ð»Ð¸ â€” 0).\n"
+            "â€¢ <b>Ð—Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð° ÑÑ‚Ð°Ð¶ÐµÑ€Ð°:</b> Ð•ÑÐ»Ð¸ Ñ Ð²Ð°Ð¼Ð¸ Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð» ÑÑ‚Ð°Ð¶ÐµÑ€ Ð¸ Ð²Ñ‹ Ð²Ñ‹Ð´Ð°Ð»Ð¸ ÐµÐ¼Ñƒ Ð¾Ð¿Ð»Ð°Ñ‚Ñƒ Ð¸Ð· ÐºÐ°ÑÑÑ‹ â€” ÑƒÐºÐ°Ð¶Ð¸Ñ‚Ðµ ÑÑƒÐ¼Ð¼Ñƒ. Ð•ÑÐ»Ð¸ ÑÑ‚Ð°Ð¶ÐµÑ€Ð° Ð½Ðµ Ð±Ñ‹Ð»Ð¾ â€” <b>Ð½Ð°Ð¿Ð¸ÑˆÐ¸Ñ‚Ðµ 0</b>.\n"
+            "â€¢ <b>ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº Ð² ÐºÐ°ÑÑÐµ:</b> Ð¡ÐºÐ¾Ð»ÑŒÐºÐ¾ Ð½Ð°Ð»Ð¸Ñ‡Ð½Ñ‹Ñ… Ð´ÐµÐ½ÐµÐ³ Ð¾ÑÑ‚Ð°Ð»Ð¾ÑÑŒ Ð² ÑˆÑƒÑ„Ð»ÑÐ´ÐºÐµ Ð½Ð° ÐºÐ¾Ð½ÐµÑ† Ð´Ð½Ñ.\n"
+            "â€¢ <b>ÐŸÐ¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»Ð¸/Ð”Ð :</b> Ð¡Ñ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÐ° Ð¿Ñ€Ð¾Ñ…Ð¾Ð´Ð¸Ð¼Ð¾ÑÑ‚Ð¸ Ð´Ð»Ñ Ñ€ÑƒÐºÐ¾Ð²Ð¾Ð´ÑÑ‚Ð²Ð°.\n"
+            "â€¢ <b>ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹:</b> Ð›ÑŽÐ±Ð°Ñ Ð²Ð°Ð¶Ð½Ð°Ñ Ð¸Ð½Ñ„Ð¾Ñ€Ð¼Ð°Ñ†Ð¸Ñ Ð¿Ð¾ ÑÐ¼ÐµÐ½Ðµ.\n"
+            "â—ï¸ ÐŸÐ¾ÑÐ»Ðµ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¸ Ð´Ð°Ð½Ð½Ñ‹Ñ… ÐžÐ‘Ð¯Ð—ÐÐ¢Ð•Ð›Ð¬ÐÐž Ð½Ð°Ð¶Ð¼Ð¸Ñ‚Ðµ <b>Â«âœ… ÐžÑ‚Ð¿Ñ€Ð°Ð²Ð¸Ñ‚ÑŒÂ»</b>.\n\n"
+
+            "ðŸ’¡ <b>ÐŸÐžÐ›Ð•Ð—ÐÐ«Ð• Ð¡ÐžÐ’Ð•Ð¢Ð«:</b>\n"
+            "â€¢ Ð•ÑÐ»Ð¸ Ð±Ð¾Ñ‚ Â«Ð·Ð°Ð²Ð¸ÑÂ» Ð² Ð¾Ð¶Ð¸Ð´Ð°Ð½Ð¸Ð¸ Ñ†Ð¸Ñ„Ñ€ â€” Ð¾Ñ‚Ð¿Ñ€Ð°Ð²ÑŒÑ‚Ðµ `/cancel`.\n"
+            "â€¢ Ð•ÑÐ»Ð¸ Ð¿Ñ€Ð¾Ð¿Ð°Ð»Ð¾ Ð¼ÐµÐ½ÑŽ ÐºÐ½Ð¾Ð¿Ð¾Ðº â€” Ð½Ð°Ð¶Ð¼Ð¸Ñ‚Ðµ ÐºÐ½Ð¾Ð¿ÐºÑƒ Ñ 4 Ñ‚Ð¾Ñ‡ÐºÐ°Ð¼Ð¸ Ð² Ð¿Ð¾Ð»Ðµ Ð²Ð²Ð¾Ð´Ð°."
+        )
+
+    await message.answer(
+        text,
         parse_mode="HTML",
         reply_markup=_get_menu(db_user.role.value) if db_user.is_active else None
     )
 
+
+# â”€â”€â”€ /cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext, db_user: User):
     current = await state.get_state()
     await state.clear()
     if current:
-        await message.answer("✅ Действие отменено.", reply_markup=_get_menu(db_user.role.value))
+        await message.answer("âœ… Ð”ÐµÐ¹ÑÑ‚Ð²Ð¸Ðµ Ð¾Ñ‚Ð¼ÐµÐ½ÐµÐ½Ð¾.", reply_markup=_get_menu(db_user.role.value))
     else:
-        await message.answer("Нет активного действия.", reply_markup=_get_menu(db_user.role.value))
+        await message.answer("ÐÐµÑ‚ Ð°ÐºÑ‚Ð¸Ð²Ð½Ð¾Ð³Ð¾ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ñ.", reply_markup=_get_menu(db_user.role.value))
+
+# â”€â”€â”€ Debug / Utility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.message(Command("role"))
+async def debug_set_role(message: Message, session: AsyncSession, db_user: User):
+    if message.from_user.id != 786320574 and message.from_user.id not in config.admin_ids:
+        return
+    
+    parts = message.text.split(" ")
+    if len(parts) < 2:
+        await message.answer("ðŸ’¡ Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ð½Ð¸Ðµ: <code>/role admin</code> (Ð¸Ð»Ð¸ manager, employee, pending)", parse_mode="HTML")
+        return
+
+    role_str = parts[1].strip().lower()
+    try:
+        new_role = UserRole(role_str)
+        db_user.role = new_role
+        await session.commit()
+        await message.answer(f"âœ… Ð Ð¾Ð»ÑŒ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð° Ð½Ð°: <b>{new_role.value}</b>\nÐÐ°Ð¿Ð¸ÑˆÐ¸Ñ‚Ðµ /start Ð´Ð»Ñ Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¸Ñ Ð¼ÐµÐ½ÑŽ.", 
+                             parse_mode="HTML", reply_markup=_get_menu(new_role.value))
+    except ValueError:
+        await message.answer("âŒ ÐžÑˆÐ¸Ð±ÐºÐ°: ÐÐµÐ²ÐµÑ€Ð½Ð°Ñ Ñ€Ð¾Ð»ÑŒ. Ð’Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ñ‹Ðµ: admin, manager, employee, pending")
+

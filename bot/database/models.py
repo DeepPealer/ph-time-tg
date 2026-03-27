@@ -1,4 +1,4 @@
-from datetime import date as py_date, datetime
+﻿from datetime import date as py_date, datetime
 from typing import Optional
 from enum import Enum as PyEnum
 from sqlalchemy import (
@@ -15,6 +15,7 @@ class Base(DeclarativeBase):
 class UserRole(str, PyEnum):
     pending = "pending"
     employee = "employee"
+    manager = "manager"
     admin = "admin"
 
 
@@ -26,18 +27,21 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(100), nullable=True)
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.pending)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
     city: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'gomel' | 'minsk' | None
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)  # user-entered name
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    reports: Mapped[list["Report"]] = relationship("Report", back_populates="user")
+    reports: Mapped[list["Report"]] = relationship("Report", foreign_keys="[Report.user_id]", back_populates="user")
+    project: Mapped[Optional["Project"]] = relationship()
 
 
 class Report(Base):
     __tablename__ = "reports"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
 
     date: Mapped[py_date] = mapped_column(Date)
     project_name: Mapped[str] = mapped_column(String(200))
@@ -56,13 +60,18 @@ class Report(Base):
     trainee_salary: Mapped[float] = mapped_column(Float, default=0.0)
     city: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'gomel' | 'minsk'
     
-    # ─── Payment Tracking ───
+    # â”€â”€â”€ Payment Tracking â”€â”€â”€
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
     payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
+    reviewed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    user: Mapped["User"] = relationship("User", back_populates="reports")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="reports")
+    reviewer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[reviewed_by_id])
+    project: Mapped[Optional["Project"]] = relationship()
+
 
 
 class SalarySetting(Base):
@@ -82,12 +91,15 @@ class Plan(Base):
     __tablename__ = "plans"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
     project_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True) # NULL means global plan
     city: Mapped[str | None] = mapped_column(String(20), nullable=True) # 'gomel' | 'minsk'
     plan_amount: Mapped[float] = mapped_column(Float)
     period: Mapped[str] = mapped_column(String(10)) # day, month
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    project: Mapped[Optional["Project"]] = relationship()
 
 
 class AuditLog(Base):
@@ -110,7 +122,19 @@ class ManagementExpense(Base):
     date: Mapped[py_date] = mapped_column(Date, index=True)
     city: Mapped[str] = mapped_column(String(20)) # 'gomel' | 'minsk'
     project_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    category: Mapped[str] = mapped_column(String(50)) # 'расходник' | 'техника' | 'аренда'
+    category: Mapped[str] = mapped_column(String(50)) # 'Ñ€Ð°ÑÑ…Ð¾Ð´Ð½Ð¸Ðº' | 'Ñ‚ÐµÑ…Ð½Ð¸ÐºÐ°' | 'Ð°Ñ€ÐµÐ½Ð´Ð°'
     amount: Mapped[float] = mapped_column(Float)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    city: Mapped[str] = mapped_column(String(20)) # 'gomel' | 'minsk'
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+

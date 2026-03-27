@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+﻿from dataclasses import dataclass, field
 from os import getenv
 from dotenv import load_dotenv
 
@@ -29,3 +29,4 @@ def load_config() -> Config:
 
 
 config = load_config()
+
