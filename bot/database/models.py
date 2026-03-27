@@ -60,7 +60,7 @@ class Report(Base):
     trainee_salary: Mapped[float] = mapped_column(Float, default=0.0)
     city: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'gomel' | 'minsk'
     
-    # â”€â”€â”€ Payment Tracking â”€â”€â”€
+    # --- Payment Tracking ---
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
     payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -122,7 +122,7 @@ class ManagementExpense(Base):
     date: Mapped[py_date] = mapped_column(Date, index=True)
     city: Mapped[str] = mapped_column(String(20)) # 'gomel' | 'minsk'
     project_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    category: Mapped[str] = mapped_column(String(50)) # 'Ñ€Ð°ÑÑ…Ð¾Ð´Ð½Ð¸Ðº' | 'Ñ‚ÐµÑ…Ð½Ð¸ÐºÐ°' | 'Ð°Ñ€ÐµÐ½Ð´Ð°'
+    category: Mapped[str] = mapped_column(String(50)) # 'расходник' | 'техника' | 'аренда'
     amount: Mapped[float] = mapped_column(Float)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -43,13 +43,13 @@ async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: 
     # Line plot with shadows and markers
     sns.lineplot(data=df, x='date', y='revenue', ax=ax, 
                  marker='o', markersize=8, color='#4e73df', 
-                 linewidth=3, label='Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°')
+                 linewidth=3, label='Выручка')
     
     # Fill the area under the line
     ax.fill_between(df['date'], df['revenue'], color='#4e73df', alpha=0.15)
     
-    ax.set_title(f'Ð”Ð¸Ð½Ð°Ð¼Ð¸ÐºÐ° Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸ Ð·Ð° {days} Ð´Ð½ÐµÐ¹', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ° (â‚½)', fontsize=12)
+    ax.set_title(f'Динамика выручки за {days} дней', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Выручка (₽)', fontsize=12)
     ax.set_xlabel(None)
     
     # Format dates
@@ -95,24 +95,24 @@ async def generate_plan_performance_chart(session: "AsyncSession", city: str = N
         res_rev = await session.execute(stmt_rev)
         actual = res_rev.scalar() or 0
         pct = (actual / plan.plan_amount * 100) if plan.plan_amount else 0
-        data_list.append({'ÐŸÑ€Ð¾ÐµÐºÑ‚': plan.project_name, 'Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ': pct})
+        data_list.append({'Проект': plan.project_name, 'Выполнение': pct})
         
     df = pd.DataFrame(data_list)
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Dynamic coloring based on performance
-    colors = ['#1cc88a' if p >= 100 else '#f6c23e' if p >= 70 else '#e74a3b' for p in df['Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ']]
+    colors = ['#1cc88a' if p >= 100 else '#f6c23e' if p >= 70 else '#e74a3b' for p in df['Выполнение']]
     
-    bars = sns.barplot(data=df, x='ÐŸÑ€Ð¾ÐµÐºÑ‚', y='Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ', palette=colors, ax=ax, hue='ÐŸÑ€Ð¾ÐµÐºÑ‚', legend=False)
+    bars = sns.barplot(data=df, x='Проект', y='Выполнение', palette=colors, ax=ax, hue='Проект', legend=False)
     
-    ax.axhline(100, color='#e74a3b', linestyle='--', alpha=0.6, label='Ð¦ÐµÐ»ÑŒ (100%)', linewidth=2)
-    ax.set_title(f'Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ Ð¿Ð»Ð°Ð½Ð¾Ð²: {today.strftime("%B %Y")}', fontsize=18, fontweight='bold')
-    ax.set_ylabel('% Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ', fontsize=12)
-    ax.set_ylim(0, max(df['Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ'].max() + 15, 115))
+    ax.axhline(100, color='#e74a3b', linestyle='--', alpha=0.6, label='Цель (100%)', linewidth=2)
+    ax.set_title(f'Выполнение планов: {today.strftime("%B %Y")}', fontsize=18, fontweight='bold')
+    ax.set_ylabel('% выполнения', fontsize=12)
+    ax.set_ylim(0, max(df['Выполнение'].max() + 15, 115))
     
     # Text labels on bars
-    for i, p in enumerate(df['Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ']):
+    for i, p in enumerate(df['Выполнение']):
         ax.text(i, p + 2, f'{p:.1f}%', ha='center', fontweight='bold', size=11)
         
     sns.despine()
@@ -150,8 +150,8 @@ async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = Non
         return None
     
     month_names = {
-        1: 'Ð¯Ð½Ð²', 2: 'Ð¤ÐµÐ²', 3: 'ÐœÐ°Ñ€', 4: 'ÐÐ¿Ñ€', 5: 'ÐœÐ°Ð¹', 6: 'Ð˜ÑŽÐ½',
-        7: 'Ð˜ÑŽÐ»', 8: 'ÐÐ²Ð³', 9: 'Ð¡ÐµÐ½', 10: 'ÐžÐºÑ‚', 11: 'ÐÐ¾Ñ', 12: 'Ð”ÐµÐº'
+        1: 'Янв', 2: 'Фев', 3: 'Мар', 4: 'Апр', 5: 'Май', 6: 'Июн',
+        7: 'Июл', 8: 'Авг', 9: 'Сен', 10: 'Окт', 11: 'Ноя', 12: 'Дек'
     }
     
     df = pd.DataFrame(data, columns=['month', 'revenue'])
@@ -162,8 +162,8 @@ async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = Non
     # Use a gradient-like palette
     sns.barplot(data=df, x='month_name', y='revenue', palette="viridis", ax=ax, hue='month_name', legend=False)
     
-    ax.set_title(f'Ð“Ð¾Ð´Ð¾Ð²Ð°Ñ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ°: {today.year}', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Ð¡ÑƒÐ¼Ð¼Ð° (â‚½)', fontsize=12)
+    ax.set_title(f'Годовая выручка: {today.year}', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Сумма (₽)', fontsize=12)
     ax.set_xlabel(None)
     
     # Label formatting

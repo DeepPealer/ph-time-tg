@@ -11,15 +11,15 @@ router = Router()
 
 from bot.database.models import UserRole
 
-@router.message(F.text == "ðŸ‘¤ Ð›Ð¸Ñ‡Ð½Ñ‹Ð¹ ÐºÐ°Ð±Ð¸Ð½ÐµÑ‚")
+@router.message(F.text == "👤 Личный кабинет")
 async def show_cabinet(message: Message, db_user: User):
     if db_user.role != UserRole.admin:
-        await message.answer("â›” ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°.")
+        await message.answer("⛔ Нет доступа.")
         return
 
     await message.answer(
-        f"ðŸ‘¤ <b>Ð›Ð¸Ñ‡Ð½Ñ‹Ð¹ ÐºÐ°Ð±Ð¸Ð½ÐµÑ‚: {db_user.full_name}</b>\n\n"
-        "Ð—Ð´ÐµÑÑŒ Ð²Ñ‹ Ð¼Ð¾Ð¶ÐµÑ‚Ðµ Ð¿Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ÐµÑ‚ÑŒ ÑÐ²Ð¾ÑŽ ÑÑ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÑƒ Ð¸ Ð¸ÑÑ‚Ð¾Ñ€Ð¸ÑŽ Ð²Ñ‹Ð¿Ð»Ð°Ñ‚.",
+        f"👤 <b>Личный кабинет: {db_user.full_name}</b>\n\n"
+        "Здесь вы можете посмотреть свою статистику и историю выплат.",
         parse_mode="HTML",
         reply_markup=kb_cabinet_main()
     )
@@ -38,9 +38,9 @@ async def cab_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
     total_month = res_month.scalar() or 0.0
     
     msg = (
-        f"ðŸ“Š <b>Ð’Ð°ÑˆÐ° ÑÑ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÐ°</b>\n\n"
-        f"ðŸ“ˆ Ð—Ð°Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð½Ð¾ Ð² ÑÑ‚Ð¾Ð¼ Ð¼ÐµÑÑÑ†Ðµ: <b>{total_month:,.0f} â‚½</b>\n\n"
-        f"ðŸ—“ Ð”Ð°Ð½Ð½Ñ‹Ðµ Ð½Ð° {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        f"📊 <b>Ваша статистика</b>\n\n"
+        f"📈 Заработано в этом месяце: <b>{total_month:,.0f} ₽</b>\n\n"
+        f"📅 Данные на {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     )
     
     await call.message.edit_text(msg, parse_mode="HTML", reply_markup=kb_cabinet_main())
@@ -58,13 +58,13 @@ async def cab_history(call: CallbackQuery, session: AsyncSession, db_user: User)
     reports = res.scalars().all()
     
     if not reports:
-        await call.answer("Ð˜ÑÑ‚Ð¾Ñ€Ð¸Ñ Ð²Ñ‹Ð¿Ð»Ð°Ñ‚ Ð¿ÑƒÑÑ‚Ð°", show_alert=True)
+        await call.answer("История выплат пуста", show_alert=True)
         return
     
-    lines = ["ðŸ“œ <b>ÐŸÐ¾ÑÐ»ÐµÐ´Ð½Ð¸Ðµ Ð²Ñ‹Ð¿Ð»Ð°Ñ‚Ñ‹:</b>\n"]
+    lines = ["📜 <b>Последние выплаты:</b>\n"]
     for r in reports:
         pdate = r.payment_date.strftime("%d.%m.%Y") if r.payment_date else "?"
-        lines.append(f"â–«ï¸ {pdate}: <b>{r.salary_paid:,.0f} â‚½</b> ({r.date.strftime('%d.%m')})")
+        lines.append(f"▪️ {pdate}: <b>{r.salary_paid:,.0f} ₽</b> ({r.date.strftime('%d.%m')})")
         
     await call.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb_cabinet_main())
     await call.answer()

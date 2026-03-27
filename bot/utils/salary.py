@@ -2,22 +2,21 @@
 Salary calculation rules (hardcoded per business rules).
 
 Photographer Gomel:
-  Mon-Fri:  <=200 â†’ 25 + 10%; 200-300 â†’ 20%; >300 â†’ 22%
-  Saturday: <=400 â†’ 25 + 10%; 400-800 â†’ 20%; >800 â†’ 22%
-  Sunday:   <=350 â†’ 25 + 10%; 350-600 â†’ 20%; >600 â†’ 22%
+  Mon-Fri:  <=200 → 25 + 10%; 200-300 → 20%; >300 → 22%
+  Saturday: <=400 → 25 + 10%; 400-800 → 20%; >800 → 22%
+  Sunday:   <=350 → 25 + 10%; 350-600 → 20%; >600 → 22%
 
 Photographer Minsk (all days):
-  <=450 â†’ 45 + 10%; 450-1000 â†’ 20%; >1000 â†’ 22%
+  <=450 → 45 + 10%; 450-1000 → 20%; >1000 → 22%
 
 Percentage part is divided equally among shift_count.
 
 Manager: % of monthly revenue vs plan.
-  <60%    â†’ 1% of turnover
-  60-80%  â†’ 2%
-  80-110% â†’ 3%
-  >110%   â†’ 4%
+  <60%    → 1% of turnover
+  60-80%  → 2%
+  80-110% → 3%
+  >110%   → 4%
 """
-
 from __future__ import annotations
 
 CITY_GOMEL = "gomel"
@@ -47,15 +46,15 @@ _MINSK_ALL = [  # all days
 ]
 
 _MANAGER_TIERS = [
-    (0,   60,  0.01),  # <60%  â†’ 1%
-    (60,  80,  0.02),  # 60-80% â†’ 2%
-    (80,  110, 0.03),  # 80-110% â†’ 3%
-    (110, None, 0.04), # >110% â†’ 4%
+    (0,   60,  0.01),  # <60%  → 1%
+    (60,  80,  0.02),  # 60-80% → 2%
+    (80,  110, 0.03),  # 80-110% → 3%
+    (110, None, 0.04), # >110% → 4%
 ]
 
 CITY_LABELS = {
-    CITY_GOMEL: "Ð“Ð¾Ð¼ÐµÐ»ÑŒ",
-    CITY_MINSK: "ÐœÐ¸Ð½ÑÐº",
+    CITY_GOMEL: "Гомель",
+    CITY_MINSK: "Минск",
 }
 
 
@@ -97,7 +96,7 @@ def calculate_photographer_salary(
 
     city_label = CITY_LABELS.get(city, city)
     day_label = _day_type_label(city, weekday)
-    shared_note = f" (Ð½Ð° {shift_count} Ñ‡ÐµÐ».)" if shift_count > 1 else ""
+    shared_note = f" (на {shift_count} чел.)" if shift_count > 1 else ""
 
     if base > 0:
         desc = f"{city_label}/{day_label}: {base:.0f}+{pct*100:.0f}%{shared_note}"
@@ -109,13 +108,12 @@ def calculate_photographer_salary(
 
 def _day_type_label(city: str, weekday: int) -> str:
     if city == CITY_MINSK:
-        return "ÐŸÐ½â€“Ð’Ñ"
+        return "Пн–Вс"
     if weekday == 5:
-        return "Ð¡Ð±"
+        return "Сб"
     if weekday == 6:
-        return "Ð’Ñ"
-    return "ÐŸÐ½â€“ÐŸÑ‚"
-
+        return "Вс"
+    return "Пн–Пт"
 
 def calculate_manager_salary(turnover: float, plan: float) -> tuple[float, str]:
     """
@@ -123,30 +121,30 @@ def calculate_manager_salary(turnover: float, plan: float) -> tuple[float, str]:
     plan=0 means no plan set.
     """
     if not plan:
-        return 0.0, "ÐŸÐ»Ð°Ð½ Ð½Ðµ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½"
+        return 0.0, "План не установлен"
     pct_done = (turnover / plan * 100) if plan else 0
 
     for tmin, tmax, rate in _MANAGER_TIERS:
         if pct_done >= tmin and (tmax is None or pct_done < tmax):
             salary = round(turnover * rate, 2)
             desc = (
-                f"Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ {pct_done:.1f}% â†’ ÑÑ‚Ð°Ð²ÐºÐ° {rate*100:.0f}% Ð¾Ñ‚ Ð¾Ð±Ð¾Ñ€Ð¾Ñ‚Ð°"
+                f"Выполнение {pct_done:.1f}% → ставка {rate*100:.0f}% от оборота"
             )
             return salary, desc
 
     # edge: 100%+ last
     rate = _MANAGER_TIERS[-1][2]
-    return round(turnover * rate, 2), f"Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ {pct_done:.1f}% â†’ {rate*100:.0f}%"
+    return round(turnover * rate, 2), f"Выполнение {pct_done:.1f}% → {rate*100:.0f}%"
 
 
-# â”€â”€â”€ Legacy compat (still used by admin.py for display, will be cleaned up) â”€â”€â”€
+# ─── Legacy compat (still used by admin.py for display, will be cleaned up) ───
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 
 async def get_salary_levels(session: AsyncSession) -> list:
-    """Returns empty list â€” kept for backward compat during migration."""
+    """Returns empty list — kept for backward compat during migration."""
     return []
 
 

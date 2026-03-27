@@ -45,12 +45,12 @@ def _menu(role: str):
     return menu_employee()
 
 
-# â”€â”€â”€ Entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Entry ——————————————————————————————————————————————————————————————
 
-@router.message(F.text == "ðŸ“‹ Ð¡Ð´Ð°Ñ‚ÑŒ Ð¾Ñ‚Ñ‡ÐµÑ‚")
+@router.message(F.text == "📋 Сдать отчет")
 async def start_report(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     if not db_user.is_active:
-        await message.answer("â›” Ð£ Ð²Ð°Ñ Ð½ÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°. ÐžÐ±Ñ€Ð°Ñ‚Ð¸Ñ‚ÐµÑÑŒ Ðº Ð°Ð´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€Ñƒ.")
+        await message.answer("⛔ У вас нет доступа. Обратитесь к администратору.")
         return
     await state.clear()
     today = date.today().strftime("%d.%m.%Y")
@@ -68,31 +68,31 @@ async def start_report(message: Message, state: FSMContext, db_user: User, sessi
             res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
             projs = res.scalars().all()
             await _finalize_step(message, state, db_user, session,
-                                 f"ðŸ“‹ <b>Ð¡Ð´Ð°Ñ‡Ð° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð°</b> Ð·Ð° <b>{today}</b>\n\n"
-                                 "Ð¨Ð°Ð³ 2/12 â€” <b>ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚:",
+                                 f"📋 <b>Сдача отчёта</b> за <b>{today}</b>\n\n"
+                                 "Шаг 2/12 — <b>Название проекта</b>\nВыберите проект:",
                                  ReportForm.project, kb=kb_projects_for_report(projs))
         else:
             await _finalize_step(message, state, db_user, session,
-                                 f"ðŸ“‹ <b>Ð¡Ð´Ð°Ñ‡Ð° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð°</b> Ð·Ð° <b>{today}</b>\n\n"
-                                 "Ð¨Ð°Ð³ 2/12 â€” <b>Ð“Ð¾Ñ€Ð¾Ð´</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´:",
+                                 f"📋 <b>Сдача отчёта</b> за <b>{today}</b>\n\n"
+                                 "Шаг 2/12 — <b>Город</b>\nВыберите город:",
                                  ReportForm.city, kb=kb_city())
     else:
         # Managers and admins: choose any date
         await message.answer(
-            "ðŸ“‹ <b>Ð¡Ð´Ð°Ñ‡Ð° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð°</b>\n\n"
-            "Ð¨Ð°Ð³ 1/12 â€” <b>Ð”Ð°Ñ‚Ð° ÑÐ¼ÐµÐ½Ñ‹</b>\n"
-            "ÐÐ°Ð¶Ð¼Ð¸Ñ‚Ðµ Â«Ð¡ÐµÐ³Ð¾Ð´Ð½ÑÂ» Ð¸Ð»Ð¸ Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð´Ð°Ñ‚Ñƒ Ð² Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ <code>Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“</code>:",
+            "📋 <b>Сдача отчёта</b>\n\n"
+            "Шаг 1/12 — <b>Дата смены</b>\n"
+            "Нажмите «Сегодня» или введите дату в формате <code>ДД.ММ.ГГГГ</code>:",
             parse_mode="HTML",
             reply_markup=kb_use_today(today)
         )
 
 
-# â”€â”€â”€ Step 1: Date â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Step 1: Date —————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "report:use_today", ReportForm.date)
 async def use_today(call: CallbackQuery, state: FSMContext, db_user: User, session: AsyncSession):
     await state.update_data(date=date.today().isoformat())
-    await call.message.edit_text("âœ… Ð”Ð°Ñ‚Ð°: <b>ÑÐµÐ³Ð¾Ð´Ð½Ñ</b>", parse_mode="HTML")
+    await call.message.edit_text("✅ Дата: <b>сегодня</b>", parse_mode="HTML")
     
     if db_user.city:
         await state.update_data(city=db_user.city)
@@ -104,20 +104,20 @@ async def use_today(call: CallbackQuery, state: FSMContext, db_user: User, sessi
             proj = res.scalar_one_or_none()
             if proj:
                 await state.update_data(project=proj.name, project_id=proj.id)
-                await call.message.edit_text(f"âœ… ÐŸÑ€Ð¾ÐµÐºÑ‚: <b>{proj.name}</b>", parse_mode="HTML")
+                await call.message.edit_text(f"✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
                 suggested = db_user.full_name
                 return await _finalize_step(call.message, state, db_user, session,
-                    f"Ð¨Ð°Ð³ 4/12 â€” <b>Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°</b>\nÐŸÑ€ÐµÐ´Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ: Â«{suggested}Â»\nÐÐ°Ð¶Ð¼Ð¸Ñ‚Ðµ /use_name Ð¸Ð»Ð¸ Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð²Ñ€ÑƒÑ‡Ð½ÑƒÑŽ:",
+                    f"Шаг 4/12 — <b>Фамилия сотрудника</b>\nПредложение: «{suggested}»\nНажмите /use_name или введите вручную:",
                     ReportForm.employee_name)
 
         from bot.database.models import Project
         res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
         projs = res.scalars().all()
         await _finalize_step(call.message, state, db_user, session,
-                             "Ð¨Ð°Ð³ 2/12 â€” <b>ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚:", ReportForm.project, kb=kb_projects_for_report(projs))
+                             "Шаг 2/12 — <b>Название проекта</b>\nВыберите проект:", ReportForm.project, kb=kb_projects_for_report(projs))
     else:
         await _finalize_step(call.message, state, db_user, session,
-                             "Ð¨Ð°Ð³ 2/12 â€” <b>Ð“Ð¾Ñ€Ð¾Ð´</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´:", ReportForm.city, kb=kb_city())
+                             "Шаг 2/12 — <b>Город</b>\nВыберите город:", ReportForm.city, kb=kb_city())
     await call.answer()
 
 
@@ -127,19 +127,19 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
         d = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
         today = date.today()
         if d > today:
-            await message.answer("âŒ Ð”Ð°Ñ‚Ð° Ð½Ðµ Ð¼Ð¾Ð¶ÐµÑ‚ Ð±Ñ‹Ñ‚ÑŒ Ð² Ð±ÑƒÐ´ÑƒÑ‰ÐµÐ¼. Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½ÑƒÑŽ Ð´Ð°Ñ‚Ñƒ:")
+            await message.answer("❌ Дата не может быть в будущем. Введите корректную дату:")
             return
         if d < today.replace(year=today.year - (1 if today.month <= 2 else 0), month=(today.month - 2) % 12 or 12):
              # Simple check for ~60 days, but let's be more precise
              from datetime import timedelta
              if d < today - timedelta(days=60):
-                 await message.answer("âŒ Ð”Ð°Ñ‚Ð° ÑÐ»Ð¸ÑˆÐºÐ¾Ð¼ ÑÑ‚Ð°Ñ€Ð°Ñ (Ð±Ð¾Ð»ÐµÐµ 60 Ð´Ð½ÐµÐ¹). Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½ÑƒÑŽ Ð´Ð°Ñ‚Ñƒ:")
+                 await message.answer("❌ Дата слишком старая (более 60 дней). Введите корректную дату:")
                  return
     except ValueError:
-        await message.answer("âŒ ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚. Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð´Ð°Ñ‚Ñƒ ÐºÐ°Ðº <code>Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“</code>:", parse_mode="HTML")
+        await message.answer("❌ Неверный формат. Введите дату как <code>ДД.ММ.ГГГГ</code>:", parse_mode="HTML")
         return
     await state.update_data(date=d.isoformat())
-    msg_prefix = f"âœ… Ð”Ð°Ñ‚Ð°: <b>{d.strftime('%d.%m.%Y')}</b>\n\n"
+    msg_prefix = f"✅ Дата: <b>{d.strftime('%d.%m.%Y')}</b>\n\n"
     
     if db_user.city:
         await state.update_data(city=db_user.city)
@@ -151,41 +151,41 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
             proj = res.scalar_one_or_none()
             if proj:
                 await state.update_data(project=proj.name, project_id=proj.id)
-                await message.answer(f"{msg_prefix}âœ… ÐŸÑ€Ð¾ÐµÐºÑ‚: <b>{proj.name}</b>", parse_mode="HTML")
+                await message.answer(f"{msg_prefix}✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
                 suggested = db_user.full_name
                 return await _finalize_step(message, state, db_user, session,
-                    f"Ð¨Ð°Ð³ 4/12 â€” <b>Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°</b>\nÐŸÑ€ÐµÐ´Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ: Â«{suggested}Â»\nÐÐ°Ð¶Ð¼Ð¸Ñ‚Ðµ /use_name Ð¸Ð»Ð¸ Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð²Ñ€ÑƒÑ‡Ð½ÑƒÑŽ:",
+                    f"Шаг 4/12 — <b>Фамилия сотрудника</b>\nПредложение: «{suggested}»\nНажмите /use_name или введите вручную:",
                     ReportForm.employee_name)
 
         from bot.database.models import Project
         res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
         projs = res.scalars().all()
         await _finalize_step(message, state, db_user, session, 
-                             f"{msg_prefix}Ð¨Ð°Ð³ 2/12 â€” <b>ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚:",
+                             f"{msg_prefix}Шаг 2/12 — <b>Название проекта</b>\nВыберите проект:",
                              ReportForm.project, kb=kb_projects_for_report(projs))
     else:
         await _finalize_step(message, state, db_user, session,
-                             f"{msg_prefix}Ð¨Ð°Ð³ 2/12 â€” <b>Ð“Ð¾Ñ€Ð¾Ð´</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´:",
+                             f"{msg_prefix}Шаг 2/12 — <b>Город</b>\nВыберите город:",
                              ReportForm.city, kb=kb_city())
 
 
 
 
-# â”€â”€â”€ Step 3 (optional): City â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Step 3 (optional): City ——————————————————————————————————————————————
 
 @router.callback_query(F.data.startswith("report:city:"), ReportForm.city)
 async def process_city(call: CallbackQuery, state: FSMContext, db_user: User, session: AsyncSession):
     city = call.data.split(":")[2]  # 'gomel' or 'minsk'
     await state.update_data(city=city)
     city_label = CITY_LABELS.get(city, city)
-    await call.message.edit_text(f"âœ… Ð“Ð¾Ñ€Ð¾Ð´: <b>{city_label}</b>", parse_mode="HTML")
+    await call.message.edit_text(f"✅ Город: <b>{city_label}</b>", parse_mode="HTML")
     
     from bot.database.models import Project
     res = await session.execute(select(Project).where(Project.city == city, Project.is_active == True))
     projs = res.scalars().all()
     
     await _finalize_step(call.message, state, db_user, session,
-                         "Ð¨Ð°Ð³ 3/12 â€” <b>ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚:",
+                         "Шаг 3/12 — <b>Название проекта</b>\nВыберите проект:",
                          ReportForm.project, kb=kb_projects_for_report(projs))
     await call.answer()
 
@@ -196,16 +196,16 @@ async def process_project_callback(call: CallbackQuery, state: FSMContext, db_us
     from bot.database.models import Project
     res = await session.execute(select(Project).where(Project.id == proj_id))
     p = res.scalar_one_or_none()
-    if not p: return await call.answer("ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½")
+    if not p: return await call.answer("Проект не найден")
     
     await state.update_data(project=p.name, project_id=p.id)
-    await call.message.edit_text(f"âœ… ÐŸÑ€Ð¾ÐµÐºÑ‚: <b>{p.name}</b>", parse_mode="HTML")
+    await call.message.edit_text(f"✅ Проект: <b>{p.name}</b>", parse_mode="HTML")
     
     suggested = db_user.full_name
     await _finalize_step(call.message, state, db_user, session,
-        f"Ð¨Ð°Ð³ 4/12 â€” <b>Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°</b>\n"
-        f"ÐŸÑ€ÐµÐ´Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ: Â«{suggested}Â»\n"
-        "ÐÐ°Ð¶Ð¼Ð¸Ñ‚Ðµ /use_name Ñ‡Ñ‚Ð¾Ð±Ñ‹ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÑŒ, Ð¸Ð»Ð¸ Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð²Ñ€ÑƒÑ‡Ð½ÑƒÑŽ:",
+        f"Шаг 4/12 — <b>Фамилия сотрудника</b>\n"
+        f"Предложение: «{suggested}»\n"
+        "Нажмите /use_name чтобы использовать, или введите вручную:",
         ReportForm.employee_name)
     await call.answer()
 
@@ -214,44 +214,44 @@ async def process_project_callback(call: CallbackQuery, state: FSMContext, db_us
 async def use_suggested_name(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await state.update_data(employee_name=db_user.full_name)
     await _finalize_step(message, state, db_user, session,
-        "Ð¨Ð°Ð³ 5/13 â€” <b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ‡ÐµÐ»Ð¾Ð²ÐµÐº Ð² ÑÐ¼ÐµÐ½Ðµ</b> (1-20):", ReportForm.shift_count)
+        "Шаг 5/13 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
 
 
 @router.message(ReportForm.employee_name)
 async def process_employee_name(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await state.update_data(employee_name=message.text.strip())
     await _finalize_step(message, state, db_user, session,
-        "Ð¨Ð°Ð³ 5/13 â€” <b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ‡ÐµÐ»Ð¾Ð²ÐµÐº Ð² ÑÐ¼ÐµÐ½Ðµ</b> (1-20):", ReportForm.shift_count)
+        "Шаг 5/13 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
 
 
-# â”€â”€â”€ Step 4: Shift count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Step 4: Shift count ——————————————————————————————————————————————————
 
 @router.message(ReportForm.shift_count)
 async def process_shift_count(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     try:
         n = int(message.text.strip())
         if not (1 <= n <= 20):
-            await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾ Ð¾Ñ‚ 1 Ð´Ð¾ 20:")
+            await message.answer("❌ Введите число от 1 до 20:")
             return
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ†ÐµÐ»Ð¾Ðµ Ñ‡Ð¸ÑÐ»Ð¾ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: 3):")
+        await message.answer("❌ Введите целое число (например: 3):")
         return
     await state.update_data(shift_count=n)
     if n > 1:
         await message.answer(
-            f"ðŸ‘¥ <b>Ð¡Ð¾Ð²Ð¼ÐµÑÑ‚Ð½Ð°Ñ ÑÐ¼ÐµÐ½Ð° ({n} Ñ‡ÐµÐ».)</b>\n\n"
-            "ðŸ“Œ <b>ÐšÐ°Ðº ÑÐ´Ð°Ð²Ð°Ñ‚ÑŒ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚ Ð¿Ñ€Ð¸ Ñ€Ð°Ð±Ð¾Ñ‚Ðµ Ð²Ð´Ð²Ð¾Ñ‘Ð¼:</b>\n"
-            "â€¢ ÐšÐ°Ð¶Ð´Ñ‹Ð¹ ÑÐ´Ð°Ñ‘Ñ‚ <b>ÑÐ²Ð¾Ð¹ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ñ‹Ð¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚</b>\n"
-            "â€¢ ÐšÐ°Ð¶Ð´Ñ‹Ð¹ Ð²Ð²Ð¾Ð´Ð¸Ñ‚ <b>Ð¿Ð¾Ð»Ð½ÑƒÑŽ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÑƒ</b> ÑÐ¼ÐµÐ½Ñ‹\n"
-            "â€¢ Ð—ÐŸ Ð´ÐµÐ»Ð¸Ñ‚ÑÑ Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð¸Ñ‡ÐµÑÐºÐ¸ Ð½Ð° ÐºÐ¾Ð»-Ð²Ð¾ Ñ‡ÐµÐ»Ð¾Ð²ÐµÐº\n"
-            "â€¢ Ð’ Excel Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ° ÑƒÑ‡Ð¸Ñ‚Ñ‹Ð²Ð°ÐµÑ‚ÑÑ Ð¾Ð´Ð¸Ð½ Ñ€Ð°Ð· âœ…",
+            f"👥 <b>Совместная смена ({n} чел.)</b>\n\n"
+            "📌 <b>Как сдавать отчёт при работе вдвоём:</b>\n"
+            "• Каждый сдаёт <b>свой отдельный отчёт</b>\n"
+            "• Каждый вводит <b>полную выручку</b> смены\n"
+            "• ЗП делится автоматически на кол-во человек\n"
+            "• В Excel выручка учитывается один раз ✅",
             parse_mode="HTML"
         )
     await _finalize_step(message, state, db_user, session,
-        "Ð¨Ð°Ð³ 6/13 â€” <b>ÐžÐ±Ñ‰Ð°Ñ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ°</b> (â‚½, Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ñ‡Ð¸ÑÐ»Ð¾):", ReportForm.revenue)
+        "Шаг 6/13 — <b>Общая выручка</b> (₽, только число):", ReportForm.revenue)
 
 
-# â”€â”€â”€ Helper for numeric steps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Helper for numeric steps —————————————————————————————————————————————
 
 def _clean_num(text: str) -> float:
     return float(text.strip().replace(" ", "").replace(",", "."))
@@ -263,27 +263,27 @@ async def _ask_number(message: Message, state: FSMContext, db_user: User, sessio
         v = _clean_num(message.text)
         if v < 0: raise ValueError
         if v > max_val:
-            await message.answer(f"âŒ Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÑÐ»Ð¸ÑˆÐºÐ¾Ð¼ Ð±Ð¾Ð»ÑŒÑˆÐ¾Ðµ (Ð»Ð¸Ð¼Ð¸Ñ‚ {_fmt(max_val)} â‚½). ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒÑ‚Ðµ Ð²Ð²Ð¾Ð´:")
+            await message.answer(f"❌ Значение слишком большое (лимит {_fmt(max_val)} ₽). Проверьте ввод:")
             return
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ð¾Ðµ Ñ‡Ð¸ÑÐ»Ð¾ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: 15000):")
+        await message.answer("❌ Введите корректное число (например: 15000):")
         return
     await state.update_data(**{key: v})
     await _finalize_step(message, state, db_user, session, next_prompt, next_state)
 
 
-# â”€â”€â”€ Steps 5â€“10: Numeric fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Steps 5–10: Numeric fields ———————————————————————————————————————————
 
 @router.message(ReportForm.revenue)
 async def process_revenue(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await _ask_number(message, state, db_user, session, "revenue", ReportForm.cash,
-                      "Ð¨Ð°Ð³ 7/13 â€” <b>ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ</b> (â‚½):")
+                      "Шаг 7/13 — <b>Наличные</b> (₽):")
 
 
 @router.message(ReportForm.cash)
 async def process_cash(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await _ask_number(message, state, db_user, session, "cash", ReportForm.acquiring,
-                      "Ð¨Ð°Ð³ 8/13 â€” <b>Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³ (Ð±ÐµÐ·Ð½Ð°Ð»)</b> (â‚½):")
+                      "Шаг 8/13 — <b>Эквайринг (безнал)</b> (₽):")
 
 
 @router.message(ReportForm.acquiring)
@@ -292,7 +292,7 @@ async def process_acquiring(message: Message, state: FSMContext, db_user: User, 
         v = _clean_num(message.text)
         if v < 0: raise ValueError
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ð¾Ðµ Ñ‡Ð¸ÑÐ»Ð¾:")
+        await message.answer("❌ Введите корректное число:")
         return
 
     data = await state.get_data()
@@ -301,36 +301,36 @@ async def process_acquiring(message: Message, state: FSMContext, db_user: User, 
 
     if abs((cash + v) - revenue) > 0.01:
         await message.answer(
-            f"âŒ <b>ÐžÑˆÐ¸Ð±ÐºÐ° Ð² ÑÑƒÐ¼Ð¼Ðµ!</b>\n\n"
-            f"Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°: {_fmt(revenue)} â‚½\n"
-            f"ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ: {_fmt(cash)} â‚½\n"
-            f"Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³: {_fmt(v)} â‚½\n\n"
-            f"Ð¡ÑƒÐ¼Ð¼Ð° ({_fmt(cash+v)} â‚½) Ð½Ðµ ÑÐ¾Ð²Ð¿Ð°Ð´Ð°ÐµÑ‚ Ñ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¾Ð¹. "
-            "ÐŸÐ¾Ð¶Ð°Ð»ÑƒÐ¹ÑÑ‚Ð°, Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÑÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³Ð° Ð¸Ð»Ð¸ Ð½Ð°Ð¿Ð¸ÑˆÐ¸Ñ‚Ðµ /cancel Ð¸ Ð½Ð°Ñ‡Ð½Ð¸Ñ‚Ðµ Ð·Ð°Ð½Ð¾Ð²Ð¾:",
+            f"❌ <b>Ошибка в сумме!</b>\n\n"
+            f"Выручка: {_fmt(revenue)} ₽\n"
+            f"Наличные: {_fmt(cash)} ₽\n"
+            f"Эквайринг: {_fmt(v)} ₽\n\n"
+            f"Сумма ({_fmt(cash+v)} ₽) не совпадает с выручкой. "
+            "Пожалуйста, введите корректное значение эквайринга или напишите /cancel и начните заново:",
             parse_mode="HTML"
         )
         return
 
     await state.update_data(acquiring=v)
-    await _finalize_step(message, state, db_user, session, "Ð¨Ð°Ð³ 9/14 â€” <b>Ð¥Ð¾Ð· Ñ€Ð°ÑÑ…Ð¾Ð´</b> (â‚½):", ReportForm.expense)
+    await _finalize_step(message, state, db_user, session, "Шаг 9/14 — <b>Хоз расход</b> (₽):", ReportForm.expense)
 
 
 @router.message(ReportForm.expense)
 async def process_expense(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await _ask_number(message, state, db_user, session, "expense", ReportForm.trainee_salary,
-                      "Ð¨Ð°Ð³ 10/14 â€” <b>Ð—Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð° ÑÑ‚Ð°Ð¶ÐµÑ€Ð°</b> (â‚½, 0 ÐµÑÐ»Ð¸ Ð½ÐµÑ‚):")
+                      "Шаг 10/14 — <b>Зарплата стажёра</b> (₽, 0 если нет):")
 
 
 @router.message(ReportForm.trainee_salary)
 async def process_trainee_salary(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await _ask_number(message, state, db_user, session, "trainee_salary", ReportForm.cash_balance,
-                      "Ð¨Ð°Ð³ 11/14 â€” <b>ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº Ð² ÐºÐ°ÑÑÐµ</b> (â‚½):")
+                      "Шаг 11/14 — <b>Остаток в кассе</b> (₽):")
 
 
 @router.message(ReportForm.cash_balance)
 async def process_cash_balance(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     await _ask_number(message, state, db_user, session, "cash_balance", ReportForm.visitors,
-                      "Ð¨Ð°Ð³ 12/14 â€” <b>ÐŸÑ€Ð¾Ñ…Ð¾Ð´Ð¸Ð¼Ð¾ÑÑ‚ÑŒ (ÐºÐ¾Ð»-Ð²Ð¾ Ð¿Ð¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»ÐµÐ¹)</b>:", max_val=1_000_000)
+                      "Шаг 12/14 — <b>Проходимость (кол-во посетителей)</b>:", max_val=1_000_000)
 
 
 @router.message(ReportForm.visitors)
@@ -338,13 +338,13 @@ async def process_visitors(message: Message, state: FSMContext, db_user: User, s
     try:
         n = int(message.text.strip())
         if not (0 <= n <= 10000):
-            await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾ Ð¾Ñ‚ 0 Ð´Ð¾ 10 000:")
+            await message.answer("❌ Введите число от 0 до 10 000:")
             return
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ†ÐµÐ»Ð¾Ðµ Ñ‡Ð¸ÑÐ»Ð¾:")
+        await message.answer("❌ Введите целое число:")
         return
     await state.update_data(visitors=n)
-    await _finalize_step(message, state, db_user, session, "Ð¨Ð°Ð³ 13/14 â€” <b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ð´Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹</b>:", ReportForm.birthdays)
+    await _finalize_step(message, state, db_user, session, "Шаг 13/14 — <b>Количество дней рождений</b>:", ReportForm.birthdays)
 
 
 @router.message(ReportForm.birthdays)
@@ -354,21 +354,21 @@ async def process_birthdays(message: Message, state: FSMContext, db_user: User, 
         if n < 0: raise ValueError
         data = await state.get_data()
         if n > data["visitors"]:
-            await message.answer(f"âŒ Ð”Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹ ({n}) Ð½Ðµ Ð¼Ð¾Ð¶ÐµÑ‚ Ð±Ñ‹Ñ‚ÑŒ Ð±Ð¾Ð»ÑŒÑˆÐµ, Ñ‡ÐµÐ¼ Ð¿Ð¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»ÐµÐ¹ ({data['visitors']}). Ð˜ÑÐ¿Ñ€Ð°Ð²ÑŒÑ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾:")
+            await message.answer(f"❌ Дней рождений ({n}) не может быть больше, чем посетителей ({data['visitors']}). Исправьте число:")
             return
         if n > 1000:
-            await message.answer("âŒ Ð¡Ð»Ð¸ÑˆÐºÐ¾Ð¼ Ð¼Ð½Ð¾Ð³Ð¾ Ð´Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹. ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒÑ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾:")
+            await message.answer("❌ Слишком много дней рождений. Проверьте число:")
             return
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ†ÐµÐ»Ð¾Ðµ Ñ‡Ð¸ÑÐ»Ð¾ (0 ÐµÑÐ»Ð¸ Ð½ÐµÑ‚):")
+        await message.answer("❌ Введите целое число (0 если нет):")
         return
     await state.update_data(birthdays=n)
     await _finalize_step(message, state, db_user, session,
-                         "Ð¨Ð°Ð³ 14/14 â€” <b>ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹</b>\nÐÐ°Ð¿Ð¸ÑˆÐ¸Ñ‚Ðµ Ñ‡Ñ‚Ð¾-Ð½Ð¸Ð±ÑƒÐ´ÑŒ (Ð¸Ð»Ð¸ ÐÐ°Ð¶Ð¼Ð¸Ñ‚Ðµ Â«ÐŸÑ€Ð¾Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒÂ»):",
+                         "Шаг 14/14 — <b>Комментарий</b>\nНапишите что-нибудь (или Нажмите «Пропустить»):",
                          ReportForm.comment, kb=kb_cancel_skip())
 
 
-# â”€â”€â”€ Step 12: Comment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Step 12: Comment —————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "report:skip", ReportForm.comment)
 async def skip_comment(call: CallbackQuery, state: FSMContext, session: AsyncSession):
@@ -385,7 +385,7 @@ async def process_comment(message: Message, state: FSMContext, session: AsyncSes
     await _show_confirm(message, state, session)
 
 
-# â”€â”€â”€ Confirm preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Confirm preview ——————————————————————————————————————————————————————
 
 async def _get_plan_line(session: AsyncSession, project_id: int | None, city: str | None, revenue: float) -> str | None:
     """Find active plan for project or global, return formatted fulfillment line."""
@@ -403,11 +403,11 @@ async def _get_plan_line(session: AsyncSession, project_id: int | None, city: st
     if not plan:
         return None
     pct = (revenue / plan.plan_amount * 100) if plan.plan_amount else 0
-    period_str = "Ð´ÐµÐ½ÑŒ" if plan.period == "day" else "Ð¼ÐµÑÑÑ†"
+    period_str = "день" if plan.period == "day" else "месяц"
     return (
-        f"ðŸŽ¯ ÐŸÐ»Ð°Ð½ ({period_str}):     <b>{_fmt(plan.plan_amount)} â‚½</b>\n"
-        f"ðŸ“ˆ Ð¤Ð°ÐºÑ‚:              <b>{_fmt(revenue)} â‚½</b>\n"
-        f"âœ… Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ:        <b>{pct:.0f}%</b>"
+        f"🎯 План ({period_str}):     <b>{_fmt(plan.plan_amount)} ₽</b>\n"
+        f"📈 Факт:              <b>{_fmt(revenue)} ₽</b>\n"
+        f"✅ Выполнение:        <b>{pct:.0f}%</b>"
     )
 
 
@@ -424,33 +424,33 @@ async def _show_confirm(msg: Message, state: FSMContext, session: AsyncSession):
     city_label = CITY_LABELS.get(city, city)
     plan_block = f"\n{plan_line}\n" if plan_line else ""
     text = (
-        "ðŸ“‹ <b>ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒÑ‚Ðµ Ð´Ð°Ð½Ð½Ñ‹Ðµ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð°:</b>\n\n"
-        f"ðŸ“… Ð”Ð°Ñ‚Ð°:              <b>{date_str}</b>\n"
-        f"ðŸ™ Ð“Ð¾Ñ€Ð¾Ð´:              <b>{city_label}</b>\n"
-        f"ðŸŽª ÐŸÑ€Ð¾ÐµÐºÑ‚:            <b>{d['project']}</b>\n"
-        f"ðŸ‘¤ Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº:         <b>{d['employee_name']}</b>\n"
-        f"ðŸ‘¥ Ð§ÐµÐ». Ð² ÑÐ¼ÐµÐ½Ðµ:      <b>{d['shift_count']}</b>\n\n"
-        f"ðŸ’° Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°:           <b>{_fmt(d['revenue'])} â‚½</b>\n"
-        f"ðŸ’µ ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ:          <b>{_fmt(d['cash'])} â‚½</b>\n"
-        f"ðŸ’³ Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³:         <b>{_fmt(d['acquiring'])} â‚½</b>\n"
-        f"ðŸ“‰ Ð¥Ð¾Ð· Ñ€Ð°ÑÑ…Ð¾Ð´:        <b>{_fmt(d['expense'])} â‚½</b>\n"
-        f"ðŸ§‘â€ðŸŽ“ Ð—ÐŸ ÑÑ‚Ð°Ð¶ÐµÑ€Ð°:       <b>{_fmt(d['trainee_salary'])} â‚½</b>\n"
-        f"ðŸ– ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº Ð² ÐºÐ°ÑÑÐµ:   <b>{_fmt(d['cash_balance'])} â‚½</b>\n"
-        f"ðŸ‘£ ÐŸÐ¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»Ð¸:        <b>{d['visitors']}</b>\n"
-        f"ðŸŽ‚ Ð”Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹:     <b>{d['birthdays']}</b>\n"
-        f"ðŸ’¬ ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹:       <b>{d.get('comment') or 'â€”'}</b>\n\n"
-        f"â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”"
+        "📋 <b>Проверьте данные отчёта:</b>\n\n"
+        f"📅 Дата:              <b>{date_str}</b>\n"
+        f"🏙️ Город:              <b>{city_label}</b>\n"
+        f"🎭 Проект:            <b>{d['project']}</b>\n"
+        f"👤 Сотрудник:         <b>{d['employee_name']}</b>\n"
+        f"👥 Чел. в смене:      <b>{d['shift_count']}</b>\n\n"
+        f"💰 Выручка:           <b>{_fmt(d['revenue'])} ₽</b>\n"
+        f"💵 Наличные:          <b>{_fmt(d['cash'])} ₽</b>\n"
+        f"💳 Эквайринг:         <b>{_fmt(d['acquiring'])} ₽</b>\n"
+        f"📉 Хоз расход:        <b>{_fmt(d['expense'])} ₽</b>\n"
+        f"🎓 ЗП стажёра:       <b>{_fmt(d['trainee_salary'])} ₽</b>\n"
+        f"🏦 Остаток в кассе:   <b>{_fmt(d['cash_balance'])} ₽</b>\n"
+        f"👣 Посетители:        <b>{d['visitors']}</b>\n"
+        f"🎂 Дней рождений:     <b>{d['birthdays']}</b>\n"
+        f"💬 Комментарий:       <b>{d.get('comment') or '—'}</b>\n\n"
+        f"────────────────"
         f"{plan_block}\n"
-        f"ðŸ“Š Ð¨ÐºÐ°Ð»Ð°: <i>{sal_desc}</i>\n"
-        f"ðŸ’¸ <b>Ð’Ð°ÑˆÐ° Ð—ÐŸ Ð·Ð° ÑÐ¼ÐµÐ½Ñƒ: {_fmt(salary)} â‚½</b>\n\n"
-        "Ð’ÑÑ‘ Ð²ÐµÑ€Ð½Ð¾?"
+        f"📊 Шкала: <i>{sal_desc}</i>\n"
+        f"💸 <b>Ваша ЗП за смену: {_fmt(salary)} ₽</b>\n\n"
+        "Всё верно?"
     )
     await state.update_data(salary=salary, salary_level=1)
     await state.set_state(ReportForm.confirm)
     await msg.answer(text, parse_mode="HTML", reply_markup=kb_confirm(is_editing=is_editing))
 
 
-# â”€â”€â”€ Confirm callbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Confirm callbacks ————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "report:confirm", ReportForm.confirm)
 async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
@@ -513,13 +513,13 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
     plan_part = f"\n{plan_line}" if plan_line else ""
     
     if edit_id:
-        await call.message.answer("âœ… ÐžÑ‚Ñ‡Ñ‘Ñ‚ ÑƒÑÐ¿ÐµÑˆÐ½Ð¾ Ð¾Ñ‚Ñ€ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½ Ð¸ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½!", reply_markup=_menu(db_user.role.value))
+        await call.message.answer("✅ Отчёт успешно отредактирован и сохранён!", reply_markup=_menu(db_user.role.value))
         await call.answer()
         return
 
     await call.message.answer(
-        f"âœ… ÐžÑ‚Ñ‡Ñ‘Ñ‚ Ð¿Ñ€Ð¸Ð½ÑÑ‚!{plan_part}\n\n"
-        f"ðŸ’¸ <b>Ð’Ð¾Ð·ÑŒÐ¼Ð¸ Ð¸Ð· ÐºÐ°ÑÑÑ‹: {_fmt(d['salary'])} â‚½</b>",
+        f"✅ Отчёт принят!{plan_part}\n\n"
+        f"💸 <b>Возьми из кассы: {_fmt(d['salary'])} ₽</b>",
         parse_mode="HTML",
         reply_markup=_menu(db_user.role.value)
     )
@@ -550,13 +550,13 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
 async def restart_report(call: CallbackQuery, state: FSMContext, db_user: User):
     d = await state.get_data()
     if d.get("admin_editing_report_id"):
-        return await call.answer("ÐÐµÐ´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾ Ð¿Ñ€Ð¸ Ñ€ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ð¸", show_alert=True)
+        return await call.answer("Недоступно при редактировании", show_alert=True)
     await state.clear()
     await call.message.edit_reply_markup()
     today = date.today().strftime("%d.%m.%Y")
     await state.set_state(ReportForm.date)
     await call.message.answer(
-        "ðŸ”„ ÐÐ°Ñ‡Ð¸Ð½Ð°ÐµÐ¼ Ð·Ð°Ð½Ð¾Ð²Ð¾.\n\nÐ¨Ð°Ð³ 1/12 â€” <b>Ð”Ð°Ñ‚Ð° ÑÐ¼ÐµÐ½Ñ‹</b>:",
+        "🔄 Начинаем заново.\n\nШаг 1/12 — <b>Дата смены</b>:",
         parse_mode="HTML",
         reply_markup=kb_use_today(today)
     )
@@ -574,13 +574,13 @@ async def cancel_report(call: CallbackQuery, state: FSMContext, db_user: User, s
         from bot.handlers.admin import review_view
         return await review_view(call, session, db_user, explicitly_view_id=edit_id)
 
-    await call.message.answer("âŒ ÐžÑ‚Ð¼ÐµÐ½ÐµÐ½Ð¾.", reply_markup=_menu(db_user.role.value))
+    await call.message.answer("❌ Отменено.", reply_markup=_menu(db_user.role.value))
     await call.answer()
 
 
 @router.callback_query(F.data == "report:edit")
 async def edit_report_menu(call: CallbackQuery):
-    await call.message.edit_text("Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ð¾Ð»Ðµ Ð´Ð»Ñ Ñ€ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ñ:", reply_markup=kb_edit_fields())
+    await call.message.edit_text("Выберите поле для редактирования:", reply_markup=kb_edit_fields())
     await call.answer()
 
 
@@ -596,19 +596,19 @@ async def jump_to_edit(call: CallbackQuery, state: FSMContext, session: AsyncSes
     
     # Map field names to states and prompts
     field_map = {
-        "date": (ReportForm.date, "<b>Ð”Ð°Ñ‚Ð° ÑÐ¼ÐµÐ½Ñ‹</b> (Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“):"),
-        "project": (ReportForm.project, "<b>ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b>:"),
-        "employee_name": (ReportForm.employee_name, "<b>Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°</b>:"),
-        "shift_count": (ReportForm.shift_count, "<b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ‡ÐµÐ»Ð¾Ð²ÐµÐº Ð² ÑÐ¼ÐµÐ½Ðµ</b>:"),
-        "revenue": (ReportForm.revenue, "<b>ÐžÐ±Ñ‰Ð°Ñ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ°</b> (â‚½):"),
-        "cash": (ReportForm.cash, "<b>ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ</b> (â‚½):"),
-        "acquiring": (ReportForm.acquiring, "<b>Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³ (Ð±ÐµÐ·Ð½Ð°Ð»)</b> (â‚½):"),
-        "expense": (ReportForm.expense, "<b>Ð¥Ð¾Ð· Ñ€Ð°ÑÑ…Ð¾Ð´</b> (â‚½):"),
-        "trainee_salary": (ReportForm.trainee_salary, "<b>Ð—Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð° ÑÑ‚Ð°Ð¶ÐµÑ€Ð°</b> (â‚½):"),
-        "cash_balance": (ReportForm.cash_balance, "<b>ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº Ð² ÐºÐ°ÑÑÐµ</b> (â‚½):"),
-        "visitors": (ReportForm.visitors, "<b>ÐŸÑ€Ð¾Ñ…Ð¾Ð´Ð¸Ð¼Ð¾ÑÑ‚ÑŒ (Ñ‡ÐµÐ»)</b>:"),
-        "birthdays": (ReportForm.birthdays, "<b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ð´Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹</b>:"),
-        "comment": (ReportForm.comment, "<b>ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹</b>:"),
+        "date": (ReportForm.date, "<b>Дата смены</b> (ДД.ММ.ГГГГ):"),
+        "project": (ReportForm.project, "<b>Название проекта</b>:"),
+        "employee_name": (ReportForm.employee_name, "<b>Фамилия сотрудника</b>:"),
+        "shift_count": (ReportForm.shift_count, "<b>Количество человек в смене</b>:"),
+        "revenue": (ReportForm.revenue, "<b>Общая выручка</b> (₽):"),
+        "cash": (ReportForm.cash, "<b>Наличные</b> (₽):"),
+        "acquiring": (ReportForm.acquiring, "<b>Эквайринг (безнал)</b> (₽):"),
+        "expense": (ReportForm.expense, "<b>Хоз расход</b> (₽):"),
+        "trainee_salary": (ReportForm.trainee_salary, "<b>Зарплата стажёра</b> (₽):"),
+        "cash_balance": (ReportForm.cash_balance, "<b>Остаток в кассе</b> (₽):"),
+        "visitors": (ReportForm.visitors, "<b>Проходимость (чел)</b>:"),
+        "birthdays": (ReportForm.birthdays, "<b>Количество дней рождений</b>:"),
+        "comment": (ReportForm.comment, "<b>Комментарий</b>:"),
     }
     
     if field not in field_map:
@@ -638,7 +638,7 @@ async def jump_to_edit(call: CallbackQuery, state: FSMContext, session: AsyncSes
         from bot.keyboards.builders import kb_city
         kb = kb_city()
         
-    await call.message.edit_text(f"Ð ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ: {prompt}", parse_mode="HTML", reply_markup=kb)
+    await call.message.edit_text(f"Редактирование: {prompt}", parse_mode="HTML", reply_markup=kb)
     await call.answer()
 
 
@@ -661,7 +661,7 @@ async def back_report(call: CallbackQuery, state: FSMContext):
         # When editing, Back from ANYWHERE (including confirm) goes to edit fields menu
         await state.set_state(ReportForm.confirm) # To ensure edit menu logic works
         from bot.keyboards.builders import kb_edit_fields
-        await call.message.edit_text("Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ð¾Ð»Ðµ Ð´Ð»Ñ Ñ€ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ñ:", reply_markup=kb_edit_fields())
+        await call.message.edit_text("Выберите поле для редактирования:", reply_markup=kb_edit_fields())
         return await call.answer()
 
     curr = await state.get_state()
@@ -670,23 +670,23 @@ async def back_report(call: CallbackQuery, state: FSMContext):
     
     # State mapping for "Back" button
     prev_map = {
-        ReportForm.project: (ReportForm.date, "Ð¨Ð°Ð³ 1/12 â€” <b>Ð”Ð°Ñ‚Ð° ÑÐ¼ÐµÐ½Ñ‹</b>:\nÐÐ°Ð¶Ð¼Ð¸Ñ‚Ðµ Â«Ð¡ÐµÐ³Ð¾Ð´Ð½ÑÂ» Ð¸Ð»Ð¸ Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“:"),
-        ReportForm.employee_name: (ReportForm.project, "Ð¨Ð°Ð³ 2/12 â€” <b>ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b>\nÐ’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð½Ð°Ð·Ð²Ð°Ð½Ð¸Ðµ:"),
-        ReportForm.shift_count: (ReportForm.employee_name, "Ð¨Ð°Ð³ 3/12 â€” <b>Ð¤Ð°Ð¼Ð¸Ð»Ð¸Ñ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°</b>:"),
-        ReportForm.revenue: (ReportForm.shift_count, "Ð¨Ð°Ð³ 4/12 â€” <b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ‡ÐµÐ»Ð¾Ð²ÐµÐº Ð² ÑÐ¼ÐµÐ½Ðµ</b>:"),
-        ReportForm.cash: (ReportForm.revenue, "Ð¨Ð°Ð³ 5/12 â€” <b>ÐžÐ±Ñ‰Ð°Ñ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ°</b> (â‚½):"),
-        ReportForm.acquiring: (ReportForm.cash, "Ð¨Ð°Ð³ 6/12 â€” <b>ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ</b> (â‚½):"),
-        ReportForm.expense: (ReportForm.acquiring, "Ð¨Ð°Ð³ 7/12 â€” <b>Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³ (Ð±ÐµÐ·Ð½Ð°Ð»)</b> (â‚½):"),
-        ReportForm.cash_balance: (ReportForm.expense, "Ð¨Ð°Ð³ 8/12 â€” <b>Ð Ð°ÑÑ…Ð¾Ð´</b> (â‚½):"),
-        ReportForm.visitors: (ReportForm.cash_balance, "Ð¨Ð°Ð³ 9/12 â€” <b>ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº Ð² ÐºÐ°ÑÑÐµ</b> (â‚½):"),
-        ReportForm.birthdays: (ReportForm.visitors, "Ð¨Ð°Ð³ 10/12 â€” <b>ÐŸÑ€Ð¾Ñ…Ð¾Ð´Ð¸Ð¼Ð¾ÑÑ‚ÑŒ (Ñ‡ÐµÐ»)</b>:"),
-        ReportForm.comment: (ReportForm.birthdays, "Ð¨Ð°Ð³ 11/12 â€” <b>ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ð´Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹</b>:"),
-        ReportForm.confirm: (ReportForm.comment, "Ð¨Ð°Ð³ 12/12 â€” <b>ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹</b> (Ð¸Ð»Ð¸ Ð¿Ñ€Ð¾Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ):"),
+        ReportForm.project: (ReportForm.date, "Шаг 1/12 — <b>Дата смены</b>:\nНажмите «Сегодня» или введите ДД.ММ.ГГГГ:"),
+        ReportForm.employee_name: (ReportForm.project, "Шаг 2/12 — <b>Название проекта</b>\nВведите название:"),
+        ReportForm.shift_count: (ReportForm.employee_name, "Шаг 3/12 — <b>Фамилия сотрудника</b>:"),
+        ReportForm.revenue: (ReportForm.shift_count, "Шаг 4/12 — <b>Количество человек в смене</b>:"),
+        ReportForm.cash: (ReportForm.revenue, "Шаг 5/12 — <b>Общая выручка</b> (₽):"),
+        ReportForm.acquiring: (ReportForm.cash, "Шаг 6/12 — <b>Наличные</b> (₽):"),
+        ReportForm.expense: (ReportForm.acquiring, "Шаг 7/12 — <b>Эквайринг (безнал)</b> (₽):"),
+        ReportForm.cash_balance: (ReportForm.expense, "Шаг 8/12 — <b>Расход</b> (₽):"),
+        ReportForm.visitors: (ReportForm.cash_balance, "Шаг 9/12 — <b>Остаток в кассе</b> (₽):"),
+        ReportForm.birthdays: (ReportForm.visitors, "Шаг 10/12 — <b>Проходимость (чел)</b>:"),
+        ReportForm.comment: (ReportForm.birthdays, "Шаг 11/12 — <b>Количество дней рождений</b>:"),
+        ReportForm.confirm: (ReportForm.comment, "Шаг 12/12 — <b>Комментарий</b> (или пропустить):"),
     }
     
     target = prev_map.get(curr)
     if not target:
-        await call.answer("Ð”Ð°Ð»ÑŒÑˆÐµ Ð½ÐµÐºÑƒÐ´Ð°", show_alert=True)
+        await call.answer("Дальше некуда", show_alert=True)
         return
     
     prev_state, prompt = target
@@ -704,27 +704,25 @@ async def back_report(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# â”€â”€â”€ Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Helper ———————————————————————————————————————————————————————————————
 
 def _build_admin_notification(d: dict, db_user: User, plan_line: str | None = None) -> str:
     report_date = datetime.fromisoformat(d["date"]).strftime("%d.%m.%Y")
     plan_block = f"\n{plan_line}\n" if plan_line else ""
     return (
-        f"ðŸ“‹ <b>ÐÐ¾Ð²Ñ‹Ð¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚!</b>\n\n"
-        f"ðŸ‘¤ ÐžÑ‚: {db_user.full_name}\n"
-        f"ðŸ“… Ð”Ð°Ñ‚Ð°:           {report_date}\n"
-        f"ðŸª ÐŸÑ€Ð¾ÐµÐºÑ‚:         {d['project']}\n"
-        f"ðŸ‘¥ Ð§ÐµÐ». Ð² ÑÐ¼ÐµÐ½Ðµ:   {d['shift_count']}\n\n"
-        f"ðŸ’° Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°:        {_fmt(d['revenue'])} â‚½\n"
-        f"ðŸ’µ ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ:       {_fmt(d['cash'])} â‚½\n"
-        f"ðŸ’³ Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³:      {_fmt(d['acquiring'])} â‚½\n"
-        f"ðŸ“‰ Ð Ð°ÑÑ…Ð¾Ð´:         {_fmt(d['expense'])} â‚½\n"
-        f"ðŸ¦ ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº:        {_fmt(d['cash_balance'])} â‚½\n"
-        f"ðŸ‘£ ÐŸÐ¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»Ð¸:     {d['visitors']}\n"
-        f"ðŸŽ‚ Ð”Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹:  {d['birthdays']}\n"
-        f"ðŸ’¬ ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹:    {d.get('comment') or 'â€”'}\n"
+        f"📋 <b>Новый отчёт!</b>\n\n"
+        f"👤 От: {db_user.full_name}\n"
+        f"📅 Дата:           {report_date}\n"
+        f"🎭 Проект:         {d['project']}\n"
+        f"👥 Чел. в смене:   {d['shift_count']}\n\n"
+        f"💰 Выручка:        {_fmt(d['revenue'])} ₽\n"
+        f"💵 Наличные:       {_fmt(d['cash'])} ₽\n"
+        f"💳 Эквайринг:      {_fmt(d['acquiring'])} ₽\n"
+        f"📉 Расход:         {_fmt(d['expense'])} ₽\n"
+        f"🏦 Остаток:        {_fmt(d['cash_balance'])} ₽\n"
+        f"👣 Посетители:     {d['visitors']}\n"
+        f"🎂 Дней рождений:  {d['birthdays']}\n"
+        f"💬 Комментарий:    {d.get('comment') or '—'}\n"
         f"{plan_block}\n"
-        f"ðŸ’¸ Ð’Ñ‹Ð¿Ð»Ð°Ñ‡ÐµÐ½Ð¾ Ð—ÐŸ:   {_fmt(d['salary'])} â‚½ (ÑƒÑ€.{d['salary_level']})"
+        f"💸 Выплачено ЗП:   {_fmt(d['salary'])} ₽ (ур.{d['salary_level']})"
     )
-
-

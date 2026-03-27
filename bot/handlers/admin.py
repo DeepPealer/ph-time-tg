@@ -69,27 +69,27 @@ def _kb_manager_main() -> "InlineKeyboardMarkup":
     from bot.keyboards.builders import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardMarkup
     b = InlineKeyboardBuilder()
-    b.button(text="ðŸ“‹ ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð²", callback_data="review:list")
-    b.button(text="ðŸ’¼ ÐœÐ¾Ñ Ð—ÐŸ", callback_data="mgr:my_salary")
-    b.button(text="ðŸ“‚ Ð£Ð¿Ñ€. Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹", callback_data="adm:mgmt_expenses")
-    b.button(text="ðŸ“Š ÐÐ½Ð°Ð»Ð¸Ñ‚Ð¸ÐºÐ°", callback_data="adm:analytics")
+    b.button(text="📋 Проверка отчётов", callback_data="review:list")
+    b.button(text="💼 Моя ЗП", callback_data="mgr:my_salary")
+    b.button(text="📂 Упр. расходы", callback_data="adm:mgmt_expenses")
+    b.button(text="📊 Аналитика", callback_data="adm:analytics")
     b.adjust(1)
     return b.as_markup()
 
 
-# â”€â”€â”€ Entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Entry ——————————————————————————————————————————————————————————————————
 
-@router.message(F.text == "âš™ï¸ ÐÐ´Ð¼Ð¸Ð½-Ð¿Ð°Ð½ÐµÐ»ÑŒ")
+@router.message(F.text == "⚙️ Админ-панель")
 async def show_admin_panel(message: Message, db_user: User, state: FSMContext):
     if not _require_admin(db_user):
-        await message.answer("â›” ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°.")
+        await message.answer("⛔ Нет доступа.")
         return
     await state.clear()
-    await message.answer("âš™ï¸ <b>ÐÐ´Ð¼Ð¸Ð½-Ð¿Ð°Ð½ÐµÐ»ÑŒ</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ñ€Ð°Ð·Ð´ÐµÐ»:",
+    await message.answer("⚙️ <b>Админ-панель</b>\n\nВыберите раздел:",
                          parse_mode="HTML", reply_markup=kb_admin_main())
 
 
-@router.message(F.text == "ðŸ“‹ ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð¾Ñ‚ Ð¼ÐµÐ½ÐµÐ´Ð¶ÐµÑ€Ð°")
+@router.message(F.text == "📋 Проверка отчётов от менеджера")
 async def admin_review_reports(message: Message, db_user: User, session: AsyncSession):
     if not _require_admin_or_manager(db_user): return
     # Reuse the manager's review list logic
@@ -99,32 +99,32 @@ async def admin_review_reports(message: Message, db_user: User, session: AsyncSe
     await review_list(None, session, db_user, message=message)
 
 
-# â”€â”€â”€ Back â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Back ———————————————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:back")
 async def adm_back(call: CallbackQuery, db_user: User, state: FSMContext):
     await state.clear()
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
     if role_val == "admin":
-        await call.message.edit_text("âš™ï¸ <b>ÐÐ´Ð¼Ð¸Ð½-Ð¿Ð°Ð½ÐµÐ»ÑŒ</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ñ€Ð°Ð·Ð´ÐµÐ»:",
+        await call.message.edit_text("⚙️ <b>Админ-панель</b>\n\nВыберите раздел:",
                              parse_mode="HTML", reply_markup=kb_admin_main())
     else:
         # Redirect manager to their panel
-        await call.message.edit_text("âš™ï¸ <b>ÐŸÐ°Ð½ÐµÐ»ÑŒ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ñ€Ð°Ð·Ð´ÐµÐ»:",
+        await call.message.edit_text("⚙️ <b>Панель управляющего</b>\n\nВыберите раздел:",
                              parse_mode="HTML", reply_markup=_kb_manager_main())
     await call.answer()
 
 
-# â”€â”€â”€ Reports / Excel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Reports / Excel ————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:reports")
 async def adm_reports(call: CallbackQuery, db_user: User):
-    if not _require_admin(db_user): return await call.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°", show_alert=True)
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
     try:
-        await call.message.edit_text("ðŸ“Š <b>Ð£Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ðµ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð°Ð¼Ð¸</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ðµ:",
+        await call.message.edit_text("📊 <b>Управление отчётами</b>\n\nВыберите действие:",
                                      parse_mode="HTML", reply_markup=kb_report_search_nav())
     except Exception as e:
-        await call.message.answer(f"âŒ ÐžÑˆÐ¸Ð±ÐºÐ°: {html.escape(str(e))}")
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
@@ -132,7 +132,7 @@ async def adm_reports(call: CallbackQuery, db_user: User):
 async def adm_reports_by_date_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdminForm.report_search_date)
     await call.message.edit_text(
-        "ðŸ“… <b>ÐŸÐ¾Ð¸ÑÐº Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð¿Ð¾ Ð´Ð°Ñ‚Ðµ</b>\n\nÐ’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð´Ð°Ñ‚Ñƒ Ð² Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“\n(Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: 26.03.2026):",
+        "📅 <b>Поиск отчётов по дате</b>\n\nВведите дату в формате ДД.ММ.ГГГГ\n(например: 26.03.2026):",
         parse_mode="HTML", reply_markup=kb_back("adm:reports")
     )
     await call.answer()
@@ -145,9 +145,9 @@ async def adm_reports_by_date_input(message: Message, state: FSMContext):
         await state.update_data(search_date=dt.isoformat())
         await state.set_state(AdminForm.report_search_city)
         from bot.keyboards.builders import kb_city
-        await message.answer("ðŸ™ Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´ Ð´Ð»Ñ Ñ„Ð¸Ð»ÑŒÑ‚Ñ€Ð°Ñ†Ð¸Ð¸:", reply_markup=kb_city())
+        await message.answer("🏙️ Выберите город для фильтрации:", reply_markup=kb_city())
     except ValueError:
-        await message.answer("âŒ ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚. Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð´Ð°Ñ‚Ñƒ ÐºÐ°Ðº Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€, 26.03.2026)")
+        await message.answer("❌ Неверный формат. Введите дату как ДД.ММ.ГГГГ (например, 26.03.2026)")
 
 
 @router.callback_query(AdminForm.report_search_city)
@@ -169,7 +169,7 @@ async def adm_reports_by_date_city(call: CallbackQuery, state: FSMContext, sessi
     # Actually let's add a specific one for search to builders.py
     from bot.keyboards.builders import kb_projects_for_search
     await call.message.edit_text(
-        "ðŸ“ <b>Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚</b> Ð´Ð»Ñ Ð¿Ð¾Ð¸ÑÐºÐ°:",
+        "📌 <b>Выберите проект</b> для поиска:",
         parse_mode="HTML", reply_markup=kb_projects_for_search(projects)
     )
     await call.answer()
@@ -197,11 +197,11 @@ async def adm_reports_by_date_finish(call: CallbackQuery, state: FSMContext, ses
     await state.clear()
     
     if not reports:
-        await call.message.edit_text("ðŸ¤·â€â™‚ï¸ ÐžÑ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð¾.", reply_markup=kb_back("adm:reports"))
+        await call.message.edit_text("🤷‍♂️ Отчётов не найдено.", reply_markup=kb_back("adm:reports"))
         return
         
     # Show list of reports (mini-cards)
-    text = f"ðŸ“… <b>ÐžÑ‚Ñ‡Ñ‘Ñ‚Ñ‹ Ð·Ð° {s_date.strftime('%d.%m.%Y')}</b>\nÐÐ°Ð¹Ð´ÐµÐ½Ð¾: {len(reports)}\n\n"
+    text = f"📅 <b>Отчёты за {s_date.strftime('%d.%m.%Y')}</b>\nНайдено: {len(reports)}\n\n"
     from bot.keyboards.builders import kb_report_list_mini
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_report_list_mini(reports))
     await call.answer()
@@ -210,7 +210,7 @@ async def adm_reports_by_date_finish(call: CallbackQuery, state: FSMContext, ses
 
 
 
-# â”€â”€â”€ Employees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Employees ——————————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:employees")
 async def adm_employees(call: CallbackQuery, session: AsyncSession, db_user: User):
@@ -222,7 +222,7 @@ async def adm_employees(call: CallbackQuery, session: AsyncSession, db_user: Use
     total_emps = res_count.scalar() or 0
 
     await call.message.edit_text(
-        f"ðŸ‘¥ <b>Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¸</b> ({total_emps} Ñ‡ÐµÐ».)\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´:",
+        f"👥 <b>Сотрудники</b> ({total_emps} чел.)\n\nВыберите город:",
         parse_mode="HTML", reply_markup=kb_employee_cities()
     )
     await call.answer()
@@ -236,16 +236,16 @@ async def adm_employees_city(call: CallbackQuery, session: AsyncSession, db_user
     query = select(User).where(User.role != UserRole.pending)
     if city == "none":
         query = query.where(User.city == None)
-        city_label = "â“ Ð‘Ð•Ð— Ð“ÐžÐ ÐžÐ”Ð"
+        city_label = "❓ БЕЗ ГОРОДА"
     else:
         query = query.where(User.city == city)
-        city_label = "ðŸ™ Ð“ÐžÐœÐ•Ð›Ð¬" if city == "gomel" else "ðŸŒ† ÐœÐ˜ÐÐ¡Ðš"
+        city_label = "🏙️ ГОМЕЛЬ" if city == "gomel" else "🌆 МИНСК"
         
     res = await session.execute(query.order_by(User.full_name))
     employees = res.scalars().all()
     
     await call.message.edit_text(
-        f"ðŸ‘¥ <b>Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¸ â€” {city_label}</b> ({len(employees)} Ñ‡ÐµÐ».)\n\n",
+        f"👥 <b>Сотрудники — {city_label}</b> ({len(employees)} чел.)\n\n",
         parse_mode="HTML", reply_markup=kb_employee_list(employees, city_label)
     )
     await call.answer()
@@ -257,23 +257,23 @@ async def emp_view(call: CallbackQuery, session: AsyncSession):
     res = await session.execute(select(User).where(User.telegram_id == tg_id))
     emp = res.scalar_one_or_none()
     if not emp:
-        await call.answer("ÐÐµ Ð½Ð°Ð¹Ð´ÐµÐ½", show_alert=True); return
-    role_str = {"admin": "ÐÐ´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€", "manager": "Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹", "employee": "Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº"}.get(emp.role.value, emp.role.value)
-    city_str = {"gomel": "ðŸ™ Ð“Ð¾Ð¼ÐµÐ»ÑŒ", "minsk": "ðŸŒ† ÐœÐ¸Ð½ÑÐº"}.get(emp.city or "", "â“ Ð½Ðµ Ð·Ð°Ð´Ð°Ð½")
-    proj_str = "ðŸ”“ ÐÐµÑ‚ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¸"
+        await call.answer("Не найден", show_alert=True); return
+    role_str = {"admin": "Администратор", "manager": "Управляющий", "employee": "Сотрудник"}.get(emp.role.value, emp.role.value)
+    city_str = {"gomel": "🏙️ Гомель", "minsk": "🌆 Минск"}.get(emp.city or "", "❓ не задан")
+    proj_str = "🔓 Нет привязки"
     if emp.project_id:
         pres = await session.execute(select(Project).where(Project.id == emp.project_id))
         p = pres.scalar_one_or_none()
-        if p: proj_str = f"ðŸ“ {p.name}"
+        if p: proj_str = f"📌 {p.name}"
 
     text = (
-        f"ðŸ‘¤ <b>{emp.full_name}</b>\n"
-        f"ðŸ“Ž @{emp.username or 'â€”'}\n"
-        f"ðŸ†” {emp.telegram_id}\n"
-        f"ðŸŽ­ Ð Ð¾Ð»ÑŒ: {role_str}\n"
-        f"ðŸ™ Ð“Ð¾Ñ€Ð¾Ð´: {city_str}\n"
-        f"ðŸ“‚ ÐŸÑ€Ð¾ÐµÐºÑ‚: {proj_str}\n"
-        f"âœ… ÐÐºÑ‚Ð¸Ð²ÐµÐ½: {'Ð”Ð°' if emp.is_active else 'ÐÐµÑ‚'}"
+        f"👤 <b>{emp.full_name}</b>\n"
+        f"📎 @{emp.username or '—'}\n"
+        f"🆔 {emp.telegram_id}\n"
+        f"🎭 Роль: {role_str}\n"
+        f"🏙️ Город: {city_str}\n"
+        f"📂 Проект: {proj_str}\n"
+        f"✅ Активен: {'Да' if emp.is_active else 'Нет'}"
     )
     await call.message.edit_text(text, parse_mode="HTML",
                                  reply_markup=kb_employee_actions(emp.telegram_id, emp.role.value, emp.city))
@@ -289,10 +289,10 @@ async def emp_archive(call: CallbackQuery, session: AsyncSession):
     reports = res.scalars().all()
     
     if not reports:
-        await call.answer("ðŸ¤·â€â™‚ï¸ ÐÐµÑ‚ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð² Ð°Ñ€Ñ…Ð¸Ð²Ðµ", show_alert=True)
+        await call.answer("🤷‍♂️ Нет отчётов в архиве", show_alert=True)
         return
         
-    text = f"ðŸ“‚ <b>ÐÑ€Ñ…Ð¸Ð² Ð¿Ð¾ÑÐ»ÐµÐ´Ð½Ð¸Ñ… Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð²</b>\n(Ð¿Ð¾ÑÐ»ÐµÐ´Ð½Ð¸Ðµ 20 ÑˆÑ‚.)\n\n"
+    text = f"📂 <b>Архив последних отчётов</b>\n(последние 20 шт.)\n\n"
     from bot.keyboards.builders import kb_report_list_mini
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_report_list_mini(reports))
     await call.answer()
@@ -303,8 +303,8 @@ async def emp_archive(call: CallbackQuery, session: AsyncSession):
 async def emp_add_prompt(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdminForm.add_emp_id)
     await call.message.edit_text(
-        "âž• Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ <b>Telegram ID</b> Ð½Ð¾Ð²Ð¾Ð³Ð¾ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°\n"
-        "(ÑƒÐ·Ð½Ð°Ñ‚ÑŒ Ð¼Ð¾Ð¶Ð½Ð¾ Ñ‡ÐµÑ€ÐµÐ· @userinfobot):",
+        "➕ Введите <b>Telegram ID</b> нового сотрудника\n"
+        "(узнать можно через @userinfobot):",
         parse_mode="HTML", reply_markup=kb_back("adm:employees")
     )
     await call.answer()
@@ -315,7 +315,7 @@ async def emp_add_id(message: Message, state: FSMContext, session: AsyncSession)
     try:
         tg_id = int(message.text.strip())
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾Ð²Ð¾Ð¹ Telegram ID:"); return
+        await message.answer("❌ Введите числовой Telegram ID:"); return
 
     res = await session.execute(select(User).where(User.telegram_id == tg_id))
     user = res.scalar_one_or_none()
@@ -324,7 +324,7 @@ async def emp_add_id(message: Message, state: FSMContext, session: AsyncSession)
         user.role = UserRole.employee
         user.is_active = True
         await session.commit()
-        await message.answer(f"âœ… {user.full_name} Ñ‚ÐµÐ¿ÐµÑ€ÑŒ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº!", reply_markup=menu_admin())
+        await message.answer(f"✅ {user.full_name} теперь сотрудник!", reply_markup=menu_admin())
     else:
         # Pre-create record; will be enriched on first /start
         new = User(telegram_id=tg_id, full_name=f"User_{tg_id}",
@@ -332,8 +332,8 @@ async def emp_add_id(message: Message, state: FSMContext, session: AsyncSession)
         session.add(new)
         await session.commit()
         await message.answer(
-            f"âœ… ID {tg_id} Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½ ÐºÐ°Ðº ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº.\n"
-            "ÐŸÐ¾Ð¿Ñ€Ð¾ÑÐ¸Ñ‚Ðµ ÐµÐ³Ð¾ Ð½Ð°Ð¿Ð¸ÑÐ°Ñ‚ÑŒ /start Ð±Ð¾Ñ‚Ñƒ.", reply_markup=menu_admin()
+            f"✅ ID {tg_id} добавлен как сотрудник.\n"
+            "Попросите его написать /start боту.", reply_markup=menu_admin()
         )
     await state.clear()
 
@@ -346,9 +346,9 @@ async def emp_mkadmin(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.admin; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"âœ… {emp.full_name} Ð½Ð°Ð·Ð½Ð°Ñ‡ÐµÐ½ Ð°Ð´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€Ð¾Ð¼.",
+        await call.message.edit_text(f"✅ {emp.full_name} назначен администратором.",
                                      reply_markup=kb_back("adm:employees"))
-    await call.answer("Ð“Ð¾Ñ‚Ð¾Ð²Ð¾")
+    await call.answer("Готово")
 
 
 @router.callback_query(F.data.startswith("emp:mkmgr:"))
@@ -359,9 +359,9 @@ async def emp_mkmgr(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.manager; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"âœ… {emp.full_name} Ð½Ð°Ð·Ð½Ð°Ñ‡ÐµÐ½ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¼.",
+        await call.message.edit_text(f"✅ {emp.full_name} назначен управляющим.",
                                      reply_markup=kb_back("adm:employees"))
-    await call.answer("Ð“Ð¾Ñ‚Ð¾Ð²Ð¾")
+    await call.answer("Готово")
 
 
 @router.callback_query(F.data.startswith("emp:mkemp:"))
@@ -372,9 +372,9 @@ async def emp_mkemp(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.employee; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"âœ… {emp.full_name} ÑÐ½ÑÑ‚ Ñ Ð´Ð¾Ð»Ð¶Ð½Ð¾ÑÑ‚Ð¸ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾ (Ñ‚ÐµÐ¿ÐµÑ€ÑŒ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº).",
+        await call.message.edit_text(f"✅ {emp.full_name} снят с должности управляющего (теперь сотрудник).",
                                      reply_markup=kb_back("adm:employees"))
-    await call.answer("Ð“Ð¾Ñ‚Ð¾Ð²Ð¾")
+    await call.answer("Готово")
 
 
 @router.callback_query(F.data.startswith("emp:rmadmin:"))
@@ -385,9 +385,9 @@ async def emp_rmadmin(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.employee
         await session.commit()
-        await call.message.edit_text(f"âœ… {emp.full_name} Ñ‚ÐµÐ¿ÐµÑ€ÑŒ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº.",
+        await call.message.edit_text(f"✅ {emp.full_name} теперь сотрудник.",
                                      reply_markup=kb_back("adm:employees"))
-    await call.answer("Ð“Ð¾Ñ‚Ð¾Ð²Ð¾")
+    await call.answer("Готово")
 
 
 @router.callback_query(F.data.startswith("emp:delete:"))
@@ -399,12 +399,12 @@ async def emp_delete(call: CallbackQuery, session: AsyncSession):
         emp.is_active = False
         emp.role = UserRole.pending
         await session.commit()
-        await call.message.edit_text(f"ðŸ—‘ {emp.full_name} Ð»Ð¸ÑˆÑ‘Ð½ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°.",
+        await call.message.edit_text(f"🗑️ {emp.full_name} лишён доступа.",
                                      reply_markup=kb_back("adm:employees"))
-    await call.answer("Ð£Ð´Ð°Ð»Ñ‘Ð½")
+    await call.answer("Удалён")
 
 
-# â”€â”€â”€ Pending users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Pending users ——————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:pending")
 async def adm_pending(call: CallbackQuery, session: AsyncSession, db_user: User):
@@ -414,11 +414,11 @@ async def adm_pending(call: CallbackQuery, session: AsyncSession, db_user: User)
     )
     pending = res.scalars().all()
     if not pending:
-        await call.message.edit_text("ðŸ“¥ Ð—Ð°ÑÐ²Ð¾Ðº Ð½ÐµÑ‚.", reply_markup=kb_back())
+        await call.message.edit_text("📥 Заявок нет.", reply_markup=kb_back())
         await call.answer(); return
-    text = f"ðŸ“¥ <b>Ð—Ð°ÑÐ²ÐºÐ¸ ({len(pending)})</b>\n\n"
+    text = f"📥 <b>Заявки ({len(pending)})</b>\n\n"
     for u in pending:
-        text += f"â€¢ {u.full_name} (@{u.username or 'â€”'}) â€” <code>{u.telegram_id}</code>\n"
+        text += f"• {u.full_name} (@{u.username or '—'}) — <code>{u.telegram_id}</code>\n"
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_back())
     await call.answer()
 
@@ -433,11 +433,11 @@ async def pending_approve_employee(call: CallbackQuery, session: AsyncSession, b
         await session.commit()
         name = u.display_name or u.full_name
         await call.message.edit_reply_markup()
-        await call.message.answer(f"âœ… {name} Ð¾Ð´Ð¾Ð±Ñ€ÐµÐ½ ÐºÐ°Ðº Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº.")
+        await call.message.answer(f"✅ {name} одобрен как Сотрудник.")
         try:
-            await bot.send_message(tg_id, "ðŸŽ‰ Ð’Ð°Ñˆ Ð´Ð¾ÑÑ‚ÑƒÐ¿ Ð¾Ð´Ð¾Ð±Ñ€ÐµÐ½! Ð’Ñ‹ Ñ‚ÐµÐ¿ÐµÑ€ÑŒ Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº. ÐÐ°Ð¿Ð¸ÑˆÐ¸Ñ‚Ðµ /start")
+            await bot.send_message(tg_id, "🎉 Ваш доступ одобрен! Вы теперь Сотрудник. Напишите /start")
         except Exception: pass
-    await call.answer("ÐžÐ´Ð¾Ð±Ñ€ÐµÐ½Ð¾")
+    await call.answer("Одобрено")
 
 
 @router.callback_query(F.data.startswith("pending:mgr:"))
@@ -450,11 +450,11 @@ async def pending_approve_manager(call: CallbackQuery, session: AsyncSession, bo
         await session.commit()
         name = u.display_name or u.full_name
         await call.message.edit_reply_markup()
-        await call.message.answer(f"âœ… {name} Ð¾Ð´Ð¾Ð±Ñ€ÐµÐ½ ÐºÐ°Ðº Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹.")
+        await call.message.answer(f"✅ {name} одобрен как Управляющий.")
         try:
-            await bot.send_message(tg_id, "ðŸŽ‰ Ð’Ð°Ñˆ Ð´Ð¾ÑÑ‚ÑƒÐ¿ Ð¾Ð´Ð¾Ð±Ñ€ÐµÐ½! Ð’Ñ‹ Ñ‚ÐµÐ¿ÐµÑ€ÑŒ Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹. ÐÐ°Ð¿Ð¸ÑˆÐ¸Ñ‚Ðµ /start")
+            await bot.send_message(tg_id, "🎉 Ваш доступ одобрен! Вы теперь Управляющий. Напишите /start")
         except Exception: pass
-    await call.answer("ÐžÐ´Ð¾Ð±Ñ€ÐµÐ½Ð¾")
+    await call.answer("Одобрено")
 
 
 @router.callback_query(F.data.startswith("pending:no:"))
@@ -465,22 +465,22 @@ async def pending_deny(call: CallbackQuery, session: AsyncSession, bot: Bot):
     if u:
         await session.delete(u); await session.commit()
         await call.message.edit_reply_markup()
-        await call.message.answer(f"ðŸ—‘ Ð—Ð°ÑÐ²ÐºÐ° Ð¾Ñ‚ {u.full_name} Ð¾Ñ‚ÐºÐ»Ð¾Ð½ÐµÐ½Ð°.")
+        await call.message.answer(f"🗑️ Заявка от {u.full_name} отклонена.")
         try:
-            await bot.send_message(tg_id, "âŒ Ð’Ð°Ñˆ Ð·Ð°Ð¿Ñ€Ð¾Ñ Ð½Ð° Ð´Ð¾ÑÑ‚ÑƒÐ¿ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ñ‘Ð½.")
+            await bot.send_message(tg_id, "❌ Ваш запрос на доступ отклонён.")
         except Exception: pass
-    await call.answer("ÐžÑ‚ÐºÐ»Ð¾Ð½ÐµÐ½Ð¾")
+    await call.answer("Отклонено")
 
 
-# â”€â”€â”€ Employee City â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Employee City ——————————————————————————————————————————————————————————
 
 @router.callback_query(F.data.startswith("emp:setcity:"))
 async def emp_setcity_prompt(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     tg_id = int(call.data.split(":")[2])
     await call.message.edit_text(
-        "ðŸ™ <b>Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´ Ð´Ð»Ñ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ°:</b>\n"
-        "Â«Ð¡Ð¿Ñ€Ð°ÑˆÐ¸Ð²Ð°Ñ‚ÑŒÂ» â€” Ð±Ð¾Ñ‚ Ð±ÑƒÐ´ÐµÑ‚ ÑÐ¿Ñ€Ð°ÑˆÐ¸Ð²Ð°Ñ‚ÑŒ Ð¿Ñ€Ð¸ ÐºÐ°Ð¶Ð´Ð¾Ð¼ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ðµ.",
+        "🏙️ <b>Выберите город для сотрудника:</b>\n"
+        "«Спрашивать» — бот будет спрашивать при каждом отчёте.",
         parse_mode="HTML",
         reply_markup=kb_city_for_employee(tg_id)
     )
@@ -498,12 +498,12 @@ async def emp_city_set(call: CallbackQuery, session: AsyncSession, db_user: User
     if emp:
         emp.city = city
         await session.commit()
-        city_label = {"gomel": "Ð“Ð¾Ð¼ÐµÐ»ÑŒ", "minsk": "ÐœÐ¸Ð½ÑÐº"}.get(city or "", "ÑÐ¿Ñ€Ð°ÑˆÐ¸Ð²Ð°Ñ‚ÑŒ")
+        city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(city or "", "спрашивать")
         await call.message.edit_text(
-            f"âœ… Ð“Ð¾Ñ€Ð¾Ð´ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ° <b>{emp.full_name}</b> ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½: <b>{city_label}</b>",
+            f"✅ Город сотрудника <b>{emp.full_name}</b> установлен: <b>{city_label}</b>",
             parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
         )
-    await call.answer("Ð¡Ð¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¾")
+    await call.answer("Сохранено")
 
 
 @router.callback_query(F.data.startswith("emp:bindproj:"))
@@ -517,9 +517,9 @@ async def emp_bindproj_prompt(call: CallbackQuery, session: AsyncSession, db_use
     
     from bot.keyboards.builders import kb_projects_for_user_binding
     await call.message.edit_text(
-        "ðŸ“ <b>ÐŸÑ€Ð¸Ð²ÑÐ·ÐºÐ° ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾ Ðº Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñƒ:</b>\n\n"
-        "Ð•ÑÐ»Ð¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚ Ð¿Ñ€Ð¸Ð²ÑÐ·Ð°Ð½, ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹ Ð±ÑƒÐ´ÐµÑ‚ Ð²Ð¸Ð´ÐµÑ‚ÑŒ Ð¢ÐžÐ›Ð¬ÐšÐž ÑÑ‚Ð¾Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚ "
-        "Ð¿Ñ€Ð¸ ÑÐ´Ð°Ñ‡Ðµ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð² Ð¸ Ð²Ð²Ð¾Ð´Ðµ ÑƒÐ¿Ñ€. Ñ€Ð°ÑÑ…Ð¾Ð´Ð¾Ð².",
+        "📌 <b>Привязка управляющего к проекту:</b>\n\n"
+        "Если проект привязан, управляющий будет видеть ТОЛЬКО этот проект "
+        "при сдаче отчётов и вводе упр. расходов.",
         parse_mode="HTML",
         reply_markup=kb_projects_for_user_binding(projects, tg_id)
     )
@@ -538,38 +538,38 @@ async def emp_saveproj(call: CallbackQuery, session: AsyncSession, db_user: User
     if emp:
         emp.project_id = proj_id if proj_id != 0 else None
         await session.commit()
-        proj_name = "ÐÐµÑ‚ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¸"
+        proj_name = "Нет привязки"
         if emp.project_id:
             pres = await session.execute(select(Project).where(Project.id == emp.project_id))
             p = pres.scalar_one_or_none()
             proj_name = p.name if p else "???"
             
         await call.message.edit_text(
-            f"âœ… Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰Ð¸Ð¹ <b>{emp.full_name}</b> Ð¿Ñ€Ð¸Ð²ÑÐ·Ð°Ð½ Ðº Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñƒ: <b>{proj_name}</b>",
+            f"✅ Управляющий <b>{emp.full_name}</b> привязан к проекту: <b>{proj_name}</b>",
             parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
         )
-    await call.answer("ÐŸÑ€Ð¸Ð²ÑÐ·Ð°Ð½Ð¾")
+    await call.answer("Привязано")
 
 
-# â”€â”€â”€ Salary settings (legacy placeholder) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Salary settings (legacy placeholder) ———————————————————————————————————
 
 @router.callback_query(F.data == "adm:salary")
 async def adm_salary(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     await call.message.edit_text(
-        "â„¹ï¸ <b>Ð¨ÐºÐ°Ð»Ð° Ð—ÐŸ</b>\n\n"
-        "ÐŸÑ€Ð°Ð²Ð¸Ð»Ð° Ñ€Ð°ÑÑ‡Ñ‘Ñ‚Ð° Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ñ‹ Ñ„Ð¾Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð¾Ð² Ð·Ð°Ñ„Ð¸ÐºÑÐ¸Ñ€Ð¾Ð²Ð°Ð½Ñ‹ Ð² ÑÐ¸ÑÑ‚ÐµÐ¼Ðµ:\n\n"
-        "<b>Ð“Ð¾Ð¼ÐµÐ»ÑŒ ÐŸÐ½â€“ÐŸÑ‚:</b> Ð´Ð¾ 200 Ñ€ â†’ 25+10%; 200â€“300 â†’ 20%; >300 â†’ 22%\n"
-        "<b>Ð“Ð¾Ð¼ÐµÐ»ÑŒ Ð¡Ð±:</b> Ð´Ð¾ 400 Ñ€ â†’ 25+10%; 400â€“800 â†’ 20%; >800 â†’ 22%\n"
-        "<b>Ð“Ð¾Ð¼ÐµÐ»ÑŒ Ð’Ñ:</b> Ð´Ð¾ 350 Ñ€ â†’ 25+10%; 350â€“600 â†’ 20%; >600 â†’ 22%\n"
-        "<b>ÐœÐ¸Ð½ÑÐº (Ð²ÑÐµ Ð´Ð½Ð¸):</b> Ð´Ð¾ 450 Ñ€ â†’ 45+10%; 450â€“1000 â†’ 20%; >1000 â†’ 22%\n\n"
-        "ÐŸÑ€Ð¾Ñ†ÐµÐ½Ñ‚Ð½Ð°Ñ Ñ‡Ð°ÑÑ‚ÑŒ Ð´ÐµÐ»Ð¸Ñ‚ÑÑ Ð½Ð° Ñ‡Ð¸ÑÐ»Ð¾ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸ÐºÐ¾Ð² Ð² ÑÐ¼ÐµÐ½Ðµ.",
+        "ℹ️ <b>Шкала ЗП</b>\n\n"
+        "Правила расчёта зарплаты фотографов зафиксированы в системе:\n\n"
+        "<b>Гомель Пн–Пт:</b> до 200 р → 25+10%; 200–300 → 20%; >300 → 22%\n"
+        "<b>Гомель Сб:</b> до 400 р → 25+10%; 400–800 → 20%; >800 → 22%\n"
+        "<b>Гомель Вс:</b> до 350 р → 25+10%; 350–600 → 20%; >600 → 22%\n"
+        "<b>Минск (все дни):</b> до 450 р → 45+10%; 450–1000 → 20%; >1000 → 22%\n\n"
+        "Процентная часть делится на число сотрудников в смене.",
         parse_mode="HTML", reply_markup=kb_back()
     )
     await call.answer()
 
 
-# â”€â”€â”€ Manager Salary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Manager Salary —————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:manager_salary")
 async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user: User):
@@ -600,10 +600,10 @@ async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user
             city_rev[r_city][proj] = float(rev or 0)
             total_rev_by_city[r_city] += float(rev or 0)
 
-        lines = [f"ðŸ’¼ <b>Ð—ÐŸ ÐœÐµÐ½ÐµÐ´Ð¶ÐµÑ€Ð° â€” {today.strftime('%B %Y')}</b>\n"]
+        lines = [f"💼 <b>ЗП Менеджера — {today.strftime('%B %Y')}</b>\n"]
 
         if not plans:
-            lines.append("âš ï¸ ÐÐµÑ‚ Ð°ÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ… Ð¼ÐµÑÑÑ‡Ð½Ñ‹Ñ… Ð¿Ð»Ð°Ð½Ð¾Ð².\nÐ”Ð¾Ð±Ð°Ð²ÑŒÑ‚Ðµ Ð¿Ð»Ð°Ð½ Ð² Ñ€Ð°Ð·Ð´ÐµÐ»Ðµ ðŸŽ¯ ÐŸÐ»Ð°Ð½Ñ‹ Ð¿Ñ€Ð¾Ð´Ð°Ð¶.")
+            lines.append("⚠️ Нет активных месячных планов.\nДобавьте план в разделе 🎯 Планы продаж.")
         else:
             # Group plans by city for display
             plans_by_city = defaultdict(list)
@@ -613,11 +613,11 @@ async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user
             sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, x != "gomel", x != "minsk"))
             
             for city in sorted_cities:
-                city_label = {"gomel": "ðŸ™ Ð“ÐžÐœÐ•Ð›Ð¬", "minsk": "ðŸŒ† ÐœÐ˜ÐÐ¡Ðš"}.get(city, "ðŸŒ ÐžÐ‘Ð©Ð˜Ð•")
+                city_label = {"gomel": "🏙️ ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "🌐 ОБЩИЕ")
                 lines.append(f"<b>{city_label}</b>")
                 
                 for plan in plans_by_city[city]:
-                    proj_label = plan.project_name or "Ð’ÑÐµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñ‹"
+                    proj_label = plan.project_name or "Все проекты"
                     if plan.project_name:
                         actual = city_rev[city].get(plan.project_name, 0.0)
                     else:
@@ -627,11 +627,11 @@ async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user
                     pct = (actual * 100 / plan.plan_amount) if plan.plan_amount else 0
                     bar = _progress_bar(pct)
                     lines.append(
-                        f"ðŸª {proj_label}\n"
-                        f"   ÐžÐ±Ð¾Ñ€Ð¾Ñ‚: <b>{actual:,.0f} Ñ€</b> / Ð¿Ð»Ð°Ð½ <b>{plan.plan_amount:,.0f} Ñ€</b>\n"
+                        f"📊 {proj_label}\n"
+                        f"   Оборот: <b>{actual:,.0f} р</b> / план <b>{plan.plan_amount:,.0f} р</b>\n"
                         f"   {bar} <b>{pct:.1f}%</b>\n"
                         f"   {desc}\n"
-                        f"   ðŸ’¸ Ð—ÐŸ: <b>{salary:,.2f} Ñ€</b>\n"
+                        f"   💸 ЗП: <b>{salary:,.2f} р</b>\n"
                     )
                 lines.append("")
 
@@ -640,7 +640,7 @@ async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user
             parse_mode="HTML", reply_markup=kb_back()
         )
     except Exception as e:
-        await call.message.answer(f"âŒ ÐžÑˆÐ¸Ð±ÐºÐ°: {html.escape(str(e))}")
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
@@ -650,10 +650,10 @@ async def sal_edit_prompt(call: CallbackQuery, state: FSMContext):
     await state.update_data(sal_edit_id=lvl_id)
     await state.set_state(AdminForm.sal_edit_values)
     await call.message.edit_text(
-        "âœï¸ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð½Ð¾Ð²Ñ‹Ðµ Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ ÑƒÑ€Ð¾Ð²Ð½Ñ Ð¾Ð´Ð½Ð¾Ð¹ ÑÑ‚Ñ€Ð¾ÐºÐ¾Ð¹:\n\n"
-        "<code>Ð¼Ð¸Ð½_Ð¿Ð¾Ñ€Ð¾Ð³ Ð¼Ð°ÐºÑ_Ð¿Ð¾Ñ€Ð¾Ð³ Ð¾ÐºÐ»Ð°Ð´ Ð¿Ñ€Ð¾Ñ†ÐµÐ½Ñ‚</code>\n\n"
-        "ÐŸÑ€Ð¸Ð¼ÐµÑ€: <code>0 15000 2500 10</code>\n"
-        "Ð”Ð»Ñ Ð±ÐµÐ·Ð»Ð¸Ð¼Ð¸Ñ‚Ð½Ð¾Ð³Ð¾ Ð²ÐµÑ€Ñ…Ð½ÐµÐ³Ð¾ Ð¿Ð¾Ñ€Ð¾Ð³Ð° Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ 0:\n"
+        "📝 Введите новые параметры уровня одной строкой:\n\n"
+        "<code>мин_порог макс_порог оклад процент</code>\n\n"
+        "Пример: <code>0 15000 2500 10</code>\n"
+        "Для безлимитного верхнего порога введите 0:\n"
         "<code>30000 0 0 22</code>",
         parse_mode="HTML", reply_markup=kb_back("adm:salary")
     )
@@ -667,7 +667,7 @@ async def sal_edit_save(message: Message, state: FSMContext, session: AsyncSessi
         tmin, tmax_raw, base, pct = float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3])
         tmax = None if tmax_raw == 0 else tmax_raw
     except (ValueError, IndexError):
-        await message.answer("âŒ Ð¤Ð¾Ñ€Ð¼Ð°Ñ‚: <code>Ð¼Ð¸Ð½ Ð¼Ð°ÐºÑ Ð¾ÐºÐ»Ð°Ð´ Ð¿Ñ€Ð¾Ñ†ÐµÐ½Ñ‚</code>", parse_mode="HTML")
+        await message.answer("❌ Формат: <code>мин макс оклад процент</code>", parse_mode="HTML")
         return
     d = await state.get_data()
     res = await session.execute(select(SalarySetting).where(SalarySetting.id == d["sal_edit_id"]))
@@ -676,11 +676,11 @@ async def sal_edit_save(message: Message, state: FSMContext, session: AsyncSessi
         lvl.threshold_min = tmin; lvl.threshold_max = tmax
         lvl.base_salary = base; lvl.percentage = pct / 100
         await session.commit()
-        await message.answer("âœ… Ð£Ñ€Ð¾Ð²ÐµÐ½ÑŒ Ð—ÐŸ Ð¾Ð±Ð½Ð¾Ð²Ð»Ñ‘Ð½!", reply_markup=menu_admin())
+        await message.answer("✅ Уровень ЗП обновлён!", reply_markup=menu_admin())
     await state.clear()
 
 
-# â”€â”€â”€ Plans â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Plans ——————————————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:plans")
 async def adm_plans(call: CallbackQuery, session: AsyncSession, db_user: User):
@@ -695,11 +695,11 @@ async def adm_plans(call: CallbackQuery, session: AsyncSession, db_user: User):
             by_city[p.city].append(p)
             
         await call.message.edit_text(
-            "ðŸŽ¯ <b>ÐŸÐ»Ð°Ð½Ñ‹ Ð¿Ñ€Ð¾Ð´Ð°Ð¶</b>\n\nÐ—Ð´ÐµÑÑŒ Ð¼Ð¾Ð¶Ð½Ð¾ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¸Ñ‚ÑŒ Ñ†ÐµÐ»Ð¸ Ð¿Ð¾ Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐµ Ð´Ð»Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð² Ð¸Ð»Ð¸ Ð¾Ð±Ñ‰Ð¸Ðµ.",
+            "🎯 <b>Планы продаж</b>\n\nЗдесь можно настроить цели по выручке для проектов или общие.",
             parse_mode="HTML", reply_markup=kb_plans(by_city)
         )
     except Exception as e:
-        await call.message.answer(f"âŒ ÐžÑˆÐ¸Ð±ÐºÐ°: {html.escape(str(e))}")
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
@@ -718,7 +718,7 @@ async def plan_toggle(call: CallbackQuery, session: AsyncSession):
     for p in plans:
         by_city[p.city].append(p)
     await call.message.edit_reply_markup(reply_markup=kb_plans(by_city))
-    await call.answer("Ð˜Ð·Ð¼ÐµÐ½ÐµÐ½Ð¾")
+    await call.answer("Изменено")
 
 
 @router.callback_query(F.data.startswith("plan:delete:"))
@@ -737,7 +737,7 @@ async def plan_delete(call: CallbackQuery, session: AsyncSession):
     for p in plans:
         by_city[p.city].append(p)
     await call.message.edit_reply_markup(reply_markup=kb_plans(by_city))
-    await call.answer("ÐŸÐ»Ð°Ð½ ÑƒÐ´Ð°Ð»ÐµÐ½")
+    await call.answer("План удален")
 
 
 @router.callback_query(F.data == "plan:add")
@@ -745,7 +745,7 @@ async def plan_add_prompt(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdminForm.plan_city)
     from bot.keyboards.builders import kb_city
     # We use building keyboard for reports city selection as it is same
-    await call.message.edit_text("ðŸ™ Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´ Ð´Ð»Ñ Ð¿Ð»Ð°Ð½Ð°:", reply_markup=kb_city())
+    await call.message.edit_text("🏙️ Выберите город для плана:", reply_markup=kb_city())
     await call.answer()
 
 
@@ -767,7 +767,7 @@ async def plan_add_city(call: CallbackQuery, state: FSMContext, session: AsyncSe
     
     await state.set_state(AdminForm.plan_project)
     await call.message.edit_text(
-        "ðŸ“ <b>Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚</b> Ð´Ð»Ñ Ð¿Ð»Ð°Ð½Ð°:",
+        "📌 <b>Выберите проект</b> для плана:",
         parse_mode="HTML", reply_markup=kb_projects_for_plan(projects)
     )
     await call.answer()
@@ -788,7 +788,7 @@ async def plan_add_project_callback(call: CallbackQuery, state: FSMContext, sess
             await state.update_data(plan_project_id=p.id, plan_project_name=p.name)
             
     await state.set_state(AdminForm.plan_amount)
-    await call.message.edit_text("ðŸ’° Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ <b>ÑÑƒÐ¼Ð¼Ñƒ Ð¿Ð»Ð°Ð½Ð°</b> (â‚½):", parse_mode="HTML")
+    await call.message.edit_text("💰 Введите <b>сумму плана</b> (₽):", parse_mode="HTML")
     await call.answer()
 
 
@@ -797,16 +797,16 @@ async def plan_add_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text.strip().replace(" ", "").replace(",", "."))
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾:"); return
+        await message.answer("❌ Введите число:"); return
     await state.update_data(plan_amount=amount)
     await state.set_state(AdminForm.plan_period)
-    await message.answer("ÐŸÐµÑ€Ð¸Ð¾Ð´ Ð¿Ð»Ð°Ð½Ð°: Ð²Ð²ÐµÐ´Ð¸Ñ‚Ðµ <b>Ð´ÐµÐ½ÑŒ</b> Ð¸Ð»Ð¸ <b>Ð¼ÐµÑÑÑ†</b>:", parse_mode="HTML")
+    await message.answer("Период плана: введите <b>день</b> или <b>месяц</b>:", parse_mode="HTML")
 
 
 @router.message(AdminForm.plan_period)
 async def plan_add_period(message: Message, state: FSMContext, session: AsyncSession):
     txt = message.text.strip().lower()
-    period = "day" if "Ð´ÐµÐ½ÑŒ" in txt or txt == "day" else "month"
+    period = "day" if "день" in txt or txt == "day" else "month"
     d = await state.get_data()
     session.add(Plan(
         city=d["plan_city"],
@@ -817,15 +817,15 @@ async def plan_add_period(message: Message, state: FSMContext, session: AsyncSes
     ))
     await session.commit()
     await state.clear()
-    proj_str = d["plan_project"] or "Ð’ÑÐµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñ‹"
-    period_str = "Ð´ÐµÐ½ÑŒ" if period == "day" else "Ð¼ÐµÑÑÑ†"
+    proj_str = d.get("plan_project_name") or "Все проекты"
+    period_str = "день" if period == "day" else "месяц"
     await message.answer(
-        f"âœ… ÐŸÐ»Ð°Ð½ Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½: {proj_str} â€” {d['plan_amount']:.0f}â‚½ / {period_str}",
+        f"✅ План добавлен: {proj_str} — {d['plan_amount']:.0f}₽ / {period_str}",
         reply_markup=menu_admin()
     )
 
 
-# â”€â”€â”€ Plan stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Plan stats ——————————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:stats")
 async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
@@ -841,8 +841,8 @@ async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
 
         if not plans:
             await call.message.edit_text(
-                "ðŸ“ˆ <b>Ð¡Ñ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÐ° Ð¿Ð»Ð°Ð½Ð¾Ð²</b>\n\nÐÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ… Ð¿Ð»Ð°Ð½Ð¾Ð² Ð½ÐµÑ‚.\n"
-                "Ð”Ð¾Ð±Ð°Ð²ÑŒÑ‚Ðµ Ð¸Ñ… Ð² Ñ€Ð°Ð·Ð´ÐµÐ»Ðµ ðŸŽ¯ ÐŸÐ»Ð°Ð½Ñ‹ Ð¿Ñ€Ð¾Ð´Ð°Ð¶.",
+                "📈 <b>Статистика планов</b>\n\nАктивных планов нет.\n"
+                "Добавьте их в разделе 🎯 Планы продаж.",
                 parse_mode="HTML", reply_markup=kb_back()
             )
             await call.answer()
@@ -853,17 +853,17 @@ async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
         for p in plans:
             plans_by_city[p.city].append(p)
 
-        lines = ["ðŸ“ˆ <b>Ð¡Ñ‚Ð°Ñ‚Ð¸ÑÑ‚Ð¸ÐºÐ° Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ Ð¿Ð»Ð°Ð½Ð¾Ð²</b>\n"]
+        lines = ["📈 <b>Статистика выполнения планов</b>\n"]
 
         sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, x != "gomel", x != "minsk"))
 
         for city in sorted_cities:
-            city_label = {"gomel": "ðŸ™ Ð“ÐžÐœÐ•Ð›Ð¬", "minsk": "ðŸŒ† ÐœÐ˜ÐÐ¡Ðš"}.get(city, "ðŸŒ ÐžÐ‘Ð©Ð˜Ð•")
+            city_label = {"gomel": "🏙️ ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "🌐 ОБЩИЕ")
             lines.append(f"<b>{city_label}</b>")
             
             for plan in plans_by_city[city]:
-                proj_label = plan.project_name or "Ð’ÑÐµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñ‹"
-                period_label = "Ð´ÐµÐ½ÑŒ" if plan.period == "day" else "Ð¼ÐµÑÑÑ†"
+                proj_label = plan.project_name or "Все проекты"
+                period_label = "день" if plan.period == "day" else "месяц"
                 period_start = today if plan.period == "day" else month_start
 
                 # Project filter: specific project or all in city
@@ -888,12 +888,12 @@ async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
                 pct = (actual * 100 / plan.plan_amount) if plan.plan_amount else 0
                 bar = _progress_bar(pct)
                 lines.append(
-                    f"ðŸŽ¯ {proj_label} ({period_label}):\n"
-                    f"   {bar} <b>{pct:.1f}%</b> ({actual:,.0f} / {plan.plan_amount:,.0f} Ñ€)"
+                    f"🎯 {proj_label} ({period_label}):\n"
+                    f"   {bar} <b>{pct:.1f}%</b> ({actual:,.0f} / {plan.plan_amount:,.0f} р)"
                 )
             lines.append("")
 
-        lines.append(f"\nðŸ—“ ÐŸÐ¾ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸ÑŽ Ð½Ð°: {today.strftime('%d.%m.%Y')}")
+        lines.append(f"\n📅 По состоянию на: {today.strftime('%d.%m.%Y')}")
 
         await call.message.edit_text(
             "\n".join(lines),
@@ -901,27 +901,27 @@ async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
             reply_markup=kb_back()
         )
     except Exception as e:
-        await call.message.answer(f"âŒ ÐžÑˆÐ¸Ð±ÐºÐ°: {html.escape(str(e))}")
+        await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
 
 
 def _progress_bar(pct: float, width: int = 10) -> str:
     filled = min(int(pct / 100 * width), width)
-    return "[" + "â–ˆ" * filled + "â–‘" * (width - filled) + "]"
+    return "[" + "█" * filled + "░" * (width - filled) + "]"
 
 
-# â”€â”€â”€ Debt / Payroll REMOVED (as requested) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Debt / Payroll REMOVED (as requested) ——————————————————————————————————
 
 
 
 
 
-# â”€â”€â”€ Analytics / Charts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Analytics / Charts ——————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:analytics")
 async def adm_analytics(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
-    await call.message.edit_text("ðŸ“Š <b>ÐÐ½Ð°Ð»Ð¸Ñ‚Ð¸ÐºÐ° Ð¸ Ð“Ñ€Ð°Ñ„Ð¸ÐºÐ¸</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´:",
+    await call.message.edit_text("📊 <b>Аналитика и Графики</b>\n\nВыберите город:",
                                  parse_mode="HTML", reply_markup=kb_analytics_cities())
     await call.answer()
 
@@ -930,8 +930,8 @@ async def adm_analytics(call: CallbackQuery, db_user: User):
 async def analytics_city_select(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     city = call.data.split(":")[1]
-    city_lbl = {"gomel": "Ð“Ð¾Ð¼ÐµÐ»ÑŒ", "minsk": "ÐœÐ¸Ð½ÑÐº", "all": "Ð’ÑÐµ Ð³Ð¾Ñ€Ð¾Ð´Ð°"}.get(city, city.title())
-    await call.message.edit_text(f"ðŸ“Š <b>ÐÐ½Ð°Ð»Ð¸Ñ‚Ð¸ÐºÐ° Ð¸ Ð“Ñ€Ð°Ñ„Ð¸ÐºÐ¸ â€” {city_lbl}</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ñ‚Ð¸Ð¿ Ð²Ð¸Ð·ÑƒÐ°Ð»Ð¸Ð·Ð°Ñ†Ð¸Ð¸:",
+    city_lbl = {"gomel": "Гомель", "minsk": "Минск", "all": "Все города"}.get(city, city.title())
+    await call.message.edit_text(f"📊 <b>Аналитика и Графики — {city_lbl}</b>\n\nВыберите тип визуализации:",
                                  parse_mode="HTML", reply_markup=kb_analytics(city))
     await call.answer()
 
@@ -941,21 +941,21 @@ async def chart_revenue(call: CallbackQuery, session: AsyncSession, db_user: Use
     if not _require_admin(db_user): return
     city = call.data.split(":")[2]
     city_val = None if city == "all" else city
-    await call.message.edit_text("â³ Ð“ÐµÐ½ÐµÑ€Ð¸Ñ€ÑƒÑŽ Ð³Ñ€Ð°Ñ„Ð¸Ðº Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸â€¦")
+    await call.message.edit_text("⏳ Генерирую график выручки…")
     
     buf = await generate_revenue_chart(session, days=30, city=city_val)
     if not buf:
-        await call.message.edit_text("âŒ ÐÐµÑ‚ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð´Ð»Ñ Ð¿Ð¾ÑÑ‚Ñ€Ð¾ÐµÐ½Ð¸Ñ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ°.", reply_markup=kb_analytics(city))
+        await call.message.edit_text("❌ Нет данных для построения графика.", reply_markup=kb_analytics(city))
         return
     
     city_lbl = f" ({city_val.title()})" if city_val else ""
     await call.message.answer_photo(
         BufferedInputFile(buf.getvalue(), filename="revenue.png"),
-        caption=f"ðŸ“ˆ <b>Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ° Ð·Ð° Ð¿Ð¾ÑÐ»ÐµÐ´Ð½Ð¸Ðµ 30 Ð´Ð½ÐµÐ¹{city_lbl}</b>",
+        caption=f"📈 <b>Выручка за последние 30 дней{city_lbl}</b>",
         parse_mode="HTML"
     )
     await call.message.delete()
-    await log_action(session, db_user.id, f"ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ° Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸ {city}")
+    await log_action(session, db_user.id, f"Просмотр графика выручки {city}")
     await call.answer()
 
 
@@ -964,21 +964,21 @@ async def chart_revenue_year(call: CallbackQuery, session: AsyncSession, db_user
     if not _require_admin(db_user): return
     city = call.data.split(":")[2]
     city_val = None if city == "all" else city
-    await call.message.edit_text("â³ Ð“ÐµÐ½ÐµÑ€Ð¸Ñ€ÑƒÑŽ Ð³Ð¾Ð´Ð¾Ð²Ð¾Ð¹ Ð³Ñ€Ð°Ñ„Ð¸Ðºâ€¦")
+    await call.message.edit_text("⏳ Генерирую годовой график…")
     
     buf = await generate_yearly_revenue_chart(session, city=city_val)
     if not buf:
-        await call.message.edit_text("âŒ ÐÐµÑ‚ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð´Ð»Ñ Ð¿Ð¾ÑÑ‚Ñ€Ð¾ÐµÐ½Ð¸Ñ Ð³Ð¾Ð´Ð¾Ð²Ð¾Ð³Ð¾ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ°.", reply_markup=kb_analytics(city))
+        await call.message.edit_text("❌ Нет данных для построения годового графика.", reply_markup=kb_analytics(city))
         return
     
     city_lbl = f" ({city_val.title()})" if city_val else ""
     await call.message.answer_photo(
         BufferedInputFile(buf.getvalue(), filename="revenue_year.png"),
-        caption=f"ðŸ“Š <b>Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ° Ð¿Ð¾ Ð¼ÐµÑÑÑ†Ð°Ð¼ Ð·Ð° {date.today().year} Ð³Ð¾Ð´{city_lbl}</b>",
+        caption=f"📊 <b>Выручка по месяцам за {date.today().year} год{city_lbl}</b>",
         parse_mode="HTML"
     )
     await call.message.delete()
-    await log_action(session, db_user.id, f"ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ð³Ð¾Ð´Ð¾Ð²Ð¾Ð³Ð¾ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ° Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ¸ {city}")
+    await log_action(session, db_user.id, f"Просмотр годового графика выручки {city}")
     await call.answer()
 
 
@@ -987,38 +987,38 @@ async def chart_plans(call: CallbackQuery, session: AsyncSession, db_user: User)
     if not _require_admin(db_user): return
     city = call.data.split(":")[2]
     city_val = None if city == "all" else city
-    await call.message.edit_text("â³ Ð“ÐµÐ½ÐµÑ€Ð¸Ñ€ÑƒÑŽ Ð³Ñ€Ð°Ñ„Ð¸Ðº Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ Ð¿Ð»Ð°Ð½Ð¾Ð²â€¦")
+    await call.message.edit_text("⏳ Генерирую график выполнения планов…")
     
     buf = await generate_plan_performance_chart(session, city=city_val)
     if not buf:
-        await call.message.edit_text("âŒ ÐÐµÑ‚ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð¿Ð¾ Ð¿Ð»Ð°Ð½Ð°Ð¼ Ð¿Ñ€Ð¾Ð´Ð°Ð¶.", reply_markup=kb_analytics(city))
+        await call.message.edit_text("❌ Нет данных по планам продаж.", reply_markup=kb_analytics(city))
         return
     
     city_lbl = f" ({city_val.title()})" if city_val else ""
     await call.message.answer_photo(
         BufferedInputFile(buf.getvalue(), filename="plans.png"),
-        caption=f"ðŸŽ¯ <b>Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ Ð¿Ð»Ð°Ð½Ð¾Ð² Ð¿Ñ€Ð¾Ð´Ð°Ð¶{city_lbl}</b>",
+        caption=f"🎯 <b>Выполнение планов продаж{city_lbl}</b>",
         parse_mode="HTML"
     )
     await call.message.delete()
-    await log_action(session, db_user.id, f"ÐŸÑ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ° Ð¿Ð»Ð°Ð½Ð¾Ð² {city}")
+    await log_action(session, db_user.id, f"Просмотр графика планов {city}")
     await call.answer()
 
 
-# â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Helpers —————————————————————————————————————————————————————————————————
 
 def _parse_date(text: str) -> date:
     from datetime import datetime
     return datetime.strptime(text.strip(), "%d.%m.%Y").date()
 
 
-# â”€â”€â”€ Monthly Calendar Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Monthly Calendar Report —————————————————————————————————————————————————
 
 @router.callback_query(F.data == "period:monthly_calendar")
 async def period_monthly_calendar(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     await call.message.edit_text(
-        "ðŸ“… <b>ÐœÐµÑÑÑ‡Ð½Ñ‹Ð¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´:",
+        "📅 <b>Месячный отчёт</b>\n\nВыберите город:",
         parse_mode="HTML",
         reply_markup=kb_monthly_report_cities()
     )
@@ -1030,9 +1030,9 @@ async def monthly_city_select(call: CallbackQuery, db_user: User):
     if not _require_admin(db_user): return
     city = call.data.split(":")[2]
     today = date.today()
-    city_lbl = {"gomel": "Ð“Ð¾Ð¼ÐµÐ»ÑŒ", "minsk": "ÐœÐ¸Ð½ÑÐº", "all": "Ð’ÑÐµ Ð³Ð¾Ñ€Ð¾Ð´Ð°"}.get(city, city.title())
+    city_lbl = {"gomel": "Гомель", "minsk": "Минск", "all": "Все города"}.get(city, city.title())
     await call.message.edit_text(
-        f"ðŸ“… <b>ÐœÐµÑÑÑ‡Ð½Ñ‹Ð¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚ â€” {city_lbl}</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¼ÐµÑÑÑ†:",
+        f"📅 <b>Месячный отчёт — {city_lbl}</b>\n\nВыберите месяц:",
         parse_mode="HTML",
         reply_markup=kb_month_select(today.year, today.month, city=city)
     )
@@ -1049,14 +1049,14 @@ async def send_monthly_calendar(call: CallbackQuery, session: AsyncSession, db_u
     import calendar as cal
     month_name = f"{cal.month_name[month]} {year}"
     city_lbl = f" ({city})" if city != "all" else ""
-    await call.message.edit_text(f"â³ Ð“ÐµÐ½ÐµÑ€Ð¸Ñ€ÑƒÑŽ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚ Ð·Ð° {month_name}{city_lbl}â€¦")
+    await call.message.edit_text(f"⏳ Генерирую отчёт за {month_name}{city_lbl}…")
     
     try:
         data = await generate_monthly_calendar(session, year, month, city=city)
         fname = f"report_{city}_{year}-{month:02d}.xlsx"
         await call.message.answer_document(
             BufferedInputFile(data, filename=fname),
-            caption=f"ðŸ“… ÐœÐµÑÑÑ‡Ð½Ñ‹Ð¹ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚: <b>{month_name}</b>{city_lbl}",
+            caption=f"📅 Месячный отчёт: <b>{month_name}</b>{city_lbl}",
             parse_mode="HTML",
             reply_markup=menu_admin()
         )
@@ -1064,11 +1064,11 @@ async def send_monthly_calendar(call: CallbackQuery, session: AsyncSession, db_u
     except Exception as e:
         import traceback
         traceback.print_exc()
-        await call.message.answer(f"âŒ ÐžÑˆÐ¸Ð±ÐºÐ° Ð³ÐµÐ½ÐµÑ€Ð°Ñ†Ð¸Ð¸: {html.quote(str(e))}\n\nÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒÑ‚Ðµ Ð»Ð¾Ð³Ð¸ ÑÐµÑ€Ð²ÐµÑ€Ð°.", reply_markup=menu_admin())
+        await call.message.answer(f"❌ Ошибка генерации: {html.quote(str(e))}\n\nПроверьте логи сервера.", reply_markup=menu_admin())
     await call.answer()
 
 
-# â”€â”€â”€ Management Expenses (Ð Ð°ÑÑ…Ð¾Ð´Ð½Ð¸Ðº / ÐÑ€ÐµÐ½Ð´Ð° / Ð¢ÐµÑ…Ð½Ð¸ÐºÐ°) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Management Expenses (Расходник / Аренда / Техника) —————————————————————
 
 @router.callback_query(F.data == "adm:mgmt_expenses")
 async def adm_mgmt_expenses(call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
@@ -1086,14 +1086,14 @@ async def adm_mgmt_expenses(call: CallbackQuery, session: AsyncSession, db_user:
             from bot.keyboards.builders import kb_mgmt_categories
             is_admin = db_user.role == UserRole.admin
             await call.message.edit_text(
-                f"ðŸ“‚ <b>Ð£Ð¿Ñ€. Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹ â€” {proj.name} ({proj.city})</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ ÐºÐ°Ñ‚ÐµÐ³Ð¾Ñ€Ð¸ÑŽ:",
+                f"📂 <b>Упр. расходы — {proj.name} ({proj.city})</b>\n\nВыберите категорию:",
                 parse_mode="HTML", reply_markup=kb_mgmt_categories(is_admin=is_admin)
             )
             await call.answer(); return
 
     await state.set_state(AdminForm.mgmt_city)
     from bot.keyboards.builders import kb_city
-    await call.message.edit_text("ðŸ™ Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´ Ð´Ð»Ñ Ñ€Ð°ÑÑ…Ð¾Ð´Ð°:", reply_markup=kb_city())
+    await call.message.edit_text("🏙️ Выберите город для расхода:", reply_markup=kb_city())
     await call.answer()
 
 
@@ -1120,14 +1120,14 @@ async def mgmt_city_select(call: CallbackQuery, state: FSMContext, session: Asyn
     b = InlineKeyboardBuilder()
     for p in sorted(projects):
         b.button(text=p, callback_data=f"mgmt:proj:{p}")
-    b.button(text="ðŸŒ Ð”Ð»Ñ Ð²ÑÐµÑ… Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð²", callback_data="mgmt:proj:all")
-    b.button(text="â—€ï¸ ÐÐ°Ð·Ð°Ð´", callback_data="adm:mgmt_expenses")
+    b.button(text="🌐 Для всех проектов", callback_data="mgmt:proj:all")
+    b.button(text="◀️ Назад", callback_data="adm:mgmt_expenses")
     b.adjust(1)
 
     await state.set_state(AdminForm.mgmt_project)
     await call.message.edit_text(
-        "ðŸ“ <b>Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚</b>, Ðº ÐºÐ¾Ñ‚Ð¾Ñ€Ð¾Ð¼Ñƒ Ð¾Ñ‚Ð½Ð¾ÑÐ¸Ñ‚ÑÑ Ñ€Ð°ÑÑ…Ð¾Ð´,\n"
-        "Ð¸Ð»Ð¸ Ð²Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Â«Ð”Ð»Ñ Ð²ÑÐµÑ… Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð²Â»:",
+        "📌 <b>Выберите проект</b>, к которому относится расход,\n"
+        "или выберите «Для всех проектов»:",
         parse_mode="HTML", reply_markup=b.as_markup()
     )
     await call.answer()
@@ -1141,7 +1141,7 @@ async def mgmt_project_select(call: CallbackQuery, state: FSMContext, db_user: U
     from bot.keyboards.builders import kb_mgmt_categories
     await state.set_state(AdminForm.mgmt_category)
     is_admin = db_user.role == UserRole.admin
-    await call.message.edit_text("ðŸ“‚ Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ ÐºÐ°Ñ‚ÐµÐ³Ð¾Ñ€Ð¸ÑŽ Ñ€Ð°ÑÑ…Ð¾Ð´Ð°:", reply_markup=kb_mgmt_categories(is_admin=is_admin))
+    await call.message.edit_text("📂 Выберите категорию расхода:", reply_markup=kb_mgmt_categories(is_admin=is_admin))
     await call.answer()
 
 
@@ -1151,11 +1151,11 @@ async def mgmt_category_select(call: CallbackQuery, state: FSMContext):
     await state.update_data(mgmt_category=cat)
     await state.set_state(AdminForm.mgmt_date)
     
-    if cat == "Ð°Ñ€ÐµÐ½Ð´Ð°":
+    if cat == "аренда":
         from bot.keyboards.builders import kb_mgmt_month_select
         today = date.today()
         await call.message.edit_text(
-            "ðŸ  <b>ÐÑ€ÐµÐ½Ð´Ð°</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¼ÐµÑÑÑ†, Ð·Ð° ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ð¹ Ð²Ð½Ð¾ÑÐ¸Ñ‚ÑÑ Ð¾Ð¿Ð»Ð°Ñ‚Ð°:",
+            "🏠 <b>Аренда</b>\nВыберите месяц, за который вносится оплата:",
             parse_mode="HTML",
             reply_markup=kb_mgmt_month_select(today.year, today.month)
         )
@@ -1163,7 +1163,7 @@ async def mgmt_category_select(call: CallbackQuery, state: FSMContext):
         from bot.keyboards.builders import kb_use_today
         today_str = date.today().strftime("%d.%m.%Y")
         await call.message.edit_text(
-            f"ðŸ“… ÐšÐ°Ñ‚ÐµÐ³Ð¾Ñ€Ð¸Ñ: <b>{cat}</b>\nÐ’Ð²ÐµÐ´Ð¸Ñ‚Ðµ <b>Ð´Ð°Ñ‚Ñƒ</b> Ñ€Ð°ÑÑ…Ð¾Ð´Ð° (Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“):",
+            f"📅 Категория: <b>{cat}</b>\nВведите <b>дату</b> расхода (ДД.ММ.ГГГГ):",
             parse_mode="HTML", reply_markup=kb_use_today(today_str)
         )
     await call.answer()
@@ -1192,16 +1192,16 @@ async def mgmt_date_input(message: Message, state: FSMContext):
     try:
         d = _parse_date(message.text)
     except ValueError:
-        await message.answer("âŒ ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚. Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð”Ð”.ÐœÐœ.Ð“Ð“Ð“Ð“:"); return
+        await message.answer("❌ Неверный формат. Введите ДД.ММ.ГГГГ:"); return
     await state.update_data(mgmt_date=d.isoformat())
     await mgmt_ask_amount(message, state)
 
 
 async def mgmt_ask_amount(message: Message, state: FSMContext):
     data = await state.get_data()
-    cat = data.get("mgmt_category", "Ñ€Ð°ÑÑ…Ð¾Ð´")
+    cat = data.get("mgmt_category", "расход")
     await state.set_state(AdminForm.mgmt_amount)
-    await message.answer(f"ðŸ’° Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ <b>ÑÑƒÐ¼Ð¼Ñƒ</b> ({cat}):", parse_mode="HTML", reply_markup=kb_back())
+    await message.answer(f"💰 Введите <b>сумму</b> ({cat}):", parse_mode="HTML", reply_markup=kb_back())
 
 
 # Handler removed as logic moved upstream
@@ -1213,11 +1213,11 @@ async def mgmt_amount_input(message: Message, state: FSMContext):
         v = float(message.text.strip().replace(" ", "").replace(",", "."))
         if v < 0: raise ValueError
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾:"); return
+        await message.answer("❌ Введите число:"); return
     await state.update_data(mgmt_amount=v)
     await state.set_state(AdminForm.mgmt_comment)
     from bot.keyboards.builders import kb_cancel_skip
-    await message.answer("ðŸ’¬ Ð”Ð¾Ð±Ð°Ð²ÑŒÑ‚Ðµ ÐºÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹ (Ð¸Ð»Ð¸ Ð¿Ñ€Ð¾Ð¿ÑƒÑÑ‚Ð¸Ñ‚Ðµ):", reply_markup=kb_cancel_skip())
+    await message.answer("💬 Добавьте комментарий (или пропустите):", reply_markup=kb_cancel_skip())
 
 
 @router.callback_query(AdminForm.mgmt_comment, F.data == "report:skip")
@@ -1247,22 +1247,22 @@ async def mgmt_save(message: Message, state: FSMContext, session: AsyncSession, 
         comment=d.get("mgmt_comment")
     )
     session.add(expense)
-    await log_action(session, db_user.id, "Ð”Ð¾Ð±Ð°Ð²Ð»ÐµÐ½ ÑƒÐ¿Ñ€Ð°Ð²Ð». Ñ€Ð°ÑÑ…Ð¾Ð´", f"{d['mgmt_category']}: {d['mgmt_amount']} Ñ€")
+    await log_action(session, db_user.id, "Добавлен управл. расход", f"{d['mgmt_category']}: {d['mgmt_amount']} р")
     await session.commit()
     
     kb = menu_admin() if db_user.role == UserRole.admin else menu_manager()
-    await message.answer("âœ… Ð£Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ€Ð°ÑÑ…Ð¾Ð´ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½!", reply_markup=kb)
+    await message.answer("✅ Управленческий расход сохранён!", reply_markup=kb)
 
 
-# â”€â”€â”€ Manager Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Manager Panel ———————————————————————————————————————————————————————————
 
-@router.message(F.text == "âš™ï¸ ÐŸÐ°Ð½ÐµÐ»ÑŒ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾")
+@router.message(F.text == "⚙️ Панель управляющего")
 async def show_manager_panel(message: Message, db_user: User):
     if not _require_admin_or_manager(db_user):
-        await message.answer("â›” ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°.")
+        await message.answer("⛔ Нет доступа.")
         return
     await message.answer(
-        "âš™ï¸ <b>ÐŸÐ°Ð½ÐµÐ»ÑŒ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ñ€Ð°Ð·Ð´ÐµÐ»:",
+        "⚙️ <b>Панель управляющего</b>\nВыберите раздел:",
         parse_mode="HTML",
         reply_markup=_kb_manager_main()
     )
@@ -1272,7 +1272,7 @@ async def show_manager_panel(message: Message, db_user: User):
 async def mgr_panel_callback(call: CallbackQuery, db_user: User):
     if not _require_admin_or_manager(db_user): return
     await call.message.edit_text(
-        "âš™ï¸ <b>ÐŸÐ°Ð½ÐµÐ»ÑŒ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾</b>\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ñ€Ð°Ð·Ð´ÐµÐ»:",
+        "⚙️ <b>Панель управляющего</b>\nВыберите раздел:",
         parse_mode="HTML",
         reply_markup=_kb_manager_main()
     )
@@ -1281,27 +1281,27 @@ async def mgr_panel_callback(call: CallbackQuery, db_user: User):
 def _kb_manager_main() -> InlineKeyboardMarkup:
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
-    b.button(text="ðŸ“Š ÐžÑ‚Ñ‡Ñ‘Ñ‚Ñ‹",           callback_data="adm:reports")
-    b.button(text="ðŸ“‹ ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð¾Ð²", callback_data="review:list:0")
-    b.button(text="ðŸ“ˆ ÐœÐ¾Ñ Ð—ÐŸ",            callback_data="mgr:my_salary")
-    b.button(text="ðŸ“‚ Ð£Ð¿Ñ€Ð°Ð²Ð». Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹",    callback_data="mgr:mgmt_start")
+    b.button(text="📊 Отчёты",           callback_data="adm:reports")
+    b.button(text="📋 Проверка отчётов", callback_data="review:list:0")
+    b.button(text="📈 Моя ЗП",            callback_data="mgr:my_salary")
+    b.button(text="📂 Управл. расходы",    callback_data="mgr:mgmt_start")
     b.adjust(1)
     return b.as_markup()
 
 
-# â”€â”€â”€ Manager Mgmt Expenses (Separate Flow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Manager Mgmt Expenses (Separate Flow) ———————————————————————————————————
 
 @router.callback_query(F.data == "mgr:mgmt_start")
 async def mgr_mgmt_start(call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
     if not db_user.role.value == "manager": return
     if not db_user.project_id:
-        return await call.answer("âŒ Ð’Ñ‹ Ð½Ðµ Ð¿Ñ€Ð¸Ð²ÑÐ·Ð°Ð½Ñ‹ Ðº Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñƒ.", show_alert=True)
+        return await call.answer("❌ Вы не привязаны к проекту.", show_alert=True)
     
     await state.clear()
     res = await session.execute(select(Project).where(Project.id == db_user.project_id))
     proj = res.scalar_one_or_none()
     if not proj:
-        return await call.answer("âŒ ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½.", show_alert=True)
+        return await call.answer("❌ Проект не найден.", show_alert=True)
 
     await state.update_data(mgmt_city=proj.city, mgmt_project_id=proj.id, mgmt_project=proj.name)
     await state.set_state(ManagerMgmtForm.date)
@@ -1310,7 +1310,7 @@ async def mgr_mgmt_start(call: CallbackQuery, session: AsyncSession, db_user: Us
     t = date.today().strftime("%d.%m.%Y")
     y = (date.today() - timedelta(days=1)).strftime("%d.%m.%Y")
     await call.message.edit_text(
-        f"ðŸ“‚ <b>Ð£Ð¿Ñ€. Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹ â€” {proj.name} ({proj.city})</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´Ð°Ñ‚Ñƒ:",
+        f"📂 <b>Упр. расходы — {proj.name} ({proj.city})</b>\n\nВыберите дату:",
         parse_mode="HTML", reply_markup=kb_mgmt_date(t, y)
     )
     await call.answer()
@@ -1325,11 +1325,11 @@ async def mgr_mgmt_date_select(call: CallbackQuery, state: FSMContext):
     await state.set_state(ManagerMgmtForm.category)
     
     data = await state.get_data()
-    proj_name = data.get("mgmt_project", "ÐŸÑ€Ð¾ÐµÐºÑ‚")
+    proj_name = data.get("mgmt_project", "Проект")
     
     from bot.keyboards.builders import kb_mgmt_categories_mgr
     await call.message.edit_text(
-        f"ðŸ“‚ <b>Ð£Ð¿Ñ€. Ñ€Ð°ÑÑ…Ð¾Ð´Ñ‹ â€” {proj_name}</b>\nðŸ“… Ð”Ð°Ñ‚Ð°: <b>{d_val.strftime('%d.%m.%Y')}</b>\n\nÐ’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ ÐºÐ°Ñ‚ÐµÐ³Ð¾Ñ€Ð¸ÑŽ:",
+        f"📂 <b>Упр. расходы — {proj_name}</b>\n📅 Дата: <b>{d_val.strftime('%d.%m.%Y')}</b>\n\nВыберите категорию:",
         parse_mode="HTML", reply_markup=kb_mgmt_categories_mgr()
     )
     await call.answer()
@@ -1340,7 +1340,7 @@ async def mgr_mgmt_cat_select(call: CallbackQuery, state: FSMContext):
     cat = call.data.split(":")[3]
     await state.update_data(mgmt_category=cat)
     await state.set_state(ManagerMgmtForm.amount)
-    await call.message.edit_text(f"ðŸ’° ÐšÐ°Ñ‚ÐµÐ³Ð¾Ñ€Ð¸Ñ: <b>{cat}</b>\n\nÐ’Ð²ÐµÐ´Ð¸Ñ‚Ðµ ÑÑƒÐ¼Ð¼Ñƒ (Ñ‡Ð¸ÑÐ»Ð¾):", parse_mode="HTML")
+    await call.message.edit_text(f"💰 Категория: <b>{cat}</b>\n\nВведите сумму (число):", parse_mode="HTML")
     await call.answer()
 
 
@@ -1350,11 +1350,11 @@ async def mgr_mgmt_amount_input(message: Message, state: FSMContext):
         v = float(message.text.replace(',', '.').strip())
         if v < 0: raise ValueError
     except ValueError:
-        await message.answer("âŒ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ñ‡Ð¸ÑÐ»Ð¾:"); return
+        await message.answer("❌ Введите число:"); return
     await state.update_data(mgmt_amount=v)
     await state.set_state(ManagerMgmtForm.comment)
     from bot.keyboards.builders import kb_cancel_skip
-    await message.answer("ðŸ’¬ Ð”Ð¾Ð±Ð°Ð²ÑŒÑ‚Ðµ ÐºÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹ (Ð¸Ð»Ð¸ Ð¿Ñ€Ð¾Ð¿ÑƒÑÑ‚Ð¸Ñ‚Ðµ):", reply_markup=kb_cancel_skip("mgr:mgmt_start"))
+    await message.answer("💬 Добавьте комментарий (или пропустите):", reply_markup=kb_cancel_skip("mgr:mgmt_start"))
 
 
 @router.callback_query(ManagerMgmtForm.comment, F.data == "report:skip")
@@ -1382,13 +1382,13 @@ async def review_list(call: CallbackQuery | None, session: AsyncSession, db_user
 
 async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, db_user: User, message: Message | None = None, page: int = 0):
     if not _require_admin_or_manager(db_user):
-        if call: return await call.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°", show_alert=True)
-        return await message.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°")
+        if call: return await call.answer("Нет доступа", show_alert=True)
+        return await message.answer("Нет доступа")
 
     # Manager must be bound to a project to see reports
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
     if role_val == "manager" and not db_user.project_id:
-        txt = "âš ï¸ Ð—Ð° Ð²Ð°Ð¼Ð¸ Ð½Ðµ Ð·Ð°ÐºÑ€ÐµÐ¿Ð»ÐµÐ½ Ð¿Ñ€Ð¾ÐµÐºÑ‚. ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð¾Ñ‚Ñ‡ÐµÑ‚Ð¾Ð² Ð½ÐµÐ´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð°."
+        txt = "⚠️ За вами не закреплен проект. Проверка отчетов недоступна."
         if call:
             await call.message.edit_text(txt, reply_markup=kb_back("mgr:panel"))
             await call.answer()
@@ -1409,7 +1409,7 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
 
     target = message or call.message
     if not reports:
-        txt = "âœ… Ð’ÑÐµ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ñ‹Ðµ Ð¾Ñ‚Ñ‡ÐµÑ‚Ñ‹ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ñ‹!"
+        txt = "✅ Все доступные отчеты проверены!"
         if call:
             await call.message.edit_text(txt, reply_markup=kb_back())
             await call.answer()
@@ -1429,7 +1429,7 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
     for r in page_reports:
         date_str = r.date.strftime("%d.%m")
         proj_short = (r.project_name[:10] + "..") if len(r.project_name) > 12 else r.project_name
-        btn_text = f"â³ {date_str} | {proj_short} | {r.revenue:,.0f} â‚½"
+        btn_text = f"⏳ {date_str} | {proj_short} | {r.revenue:,.0f} ₽"
         b.button(text=btn_text, callback_data=f"review:view:{r.id}")
     
     b.adjust(1)
@@ -1439,17 +1439,17 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
     # Paging buttons
     nav_btns = []
     if page > 0:
-        nav_btns.append(InlineKeyboardButton(text="â¬…ï¸ ÐŸÑ€ÐµÐ´.", callback_data=f"review:list:{page-1}"))
+        nav_btns.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"review:list:{page-1}"))
     if end < total:
-        nav_btns.append(InlineKeyboardButton(text="Ð¡Ð»ÐµÐ´. âž¡ï¸", callback_data=f"review:list:{page+1}"))
+        nav_btns.append(InlineKeyboardButton(text="След. ➡", callback_data=f"review:list:{page+1}"))
     if nav_btns:
         b.row(*nav_btns)
 
     # Back button
     back_cb = "adm:back" if db_user.role == UserRole.admin else "mgr:panel"
-    b.row(InlineKeyboardButton(text="â—€ï¸ ÐÐ°Ð·Ð°Ð´", callback_data=back_cb))
+    b.row(InlineKeyboardButton(text="◀️ Назад", callback_data=back_cb))
     
-    txt = f"ðŸ“‹ <b>ÐÐµÐ¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð½Ñ‹Ðµ Ð¾Ñ‚Ñ‡ÐµÑ‚Ñ‹ (Ð’ÑÐµÐ³Ð¾: {total}):</b>\nÐ¡Ñ‚Ñ€. {page+1} Ð¸Ð· {(total-1)//limit + 1}"
+    txt = f"📋 <b>Непроверенные отчеты (Всего: {total}):</b>\nСтр. {page+1} из {(total-1)//limit + 1}"
     if call:
         await call.message.edit_text(txt, parse_mode="HTML", reply_markup=b.as_markup())
         await call.answer()
@@ -1460,33 +1460,33 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
 @router.callback_query(F.data.startswith("review:view:"))
 async def review_view(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin_or_manager(db_user):
-        return await call.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°")
+        return await call.answer("Нет доступа")
 
     report_id = int(call.data.split(":")[2])
     res = await session.execute(select(Report).where(Report.id == report_id))
     r = res.scalar_one_or_none()
     if not r:
-        return await call.answer("ÐžÑ‚Ñ‡ÐµÑ‚ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½", show_alert=True)
+        return await call.answer("Отчет не найден", show_alert=True)
 
     # Format similar to confirming report
-    city_label = r.city or "â€”"
+    city_label = r.city or "—"
     text = (
-        f"ðŸ“‹ <b>Ð”ÐµÑ‚Ð°Ð»Ð¸ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð° #{r.id}</b>\n\n"
-        f"ðŸ“… Ð”Ð°Ñ‚Ð°:              <b>{r.date.strftime('%d.%m.%Y')}</b>\n"
-        f"ðŸ™ Ð“Ð¾Ñ€Ð¾Ð´:              <b>{city_label}</b>\n"
-        f"ðŸŽª ÐŸÑ€Ð¾ÐµÐºÑ‚:            <b>{r.project_name}</b>\n"
-        f"ðŸ‘¤ Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº:         <b>{r.employee_name}</b>\n"
-        f"ðŸ‘¥ Ð§ÐµÐ». Ð² ÑÐ¼ÐµÐ½Ðµ:      <b>{r.shift_count}</b>\n\n"
-        f"ðŸ’° Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°:           <b>{r.revenue:,.0f} â‚½</b>\n"
-        f"ðŸ’µ ÐÐ°Ð»Ð¸Ñ‡Ð½Ñ‹Ðµ:          <b>{r.cash:,.0f} â‚½</b>\n"
-        f"ðŸ’³ Ð­ÐºÐ²Ð°Ð¹Ñ€Ð¸Ð½Ð³:         <b>{r.acquiring:,.0f} â‚½</b>\n"
-        f"ðŸ“‰ Ð¥Ð¾Ð· Ñ€Ð°ÑÑ…Ð¾Ð´:        <b>{r.expense:,.0f} â‚½</b>\n"
-        f"ðŸ§‘â€ðŸŽ“ Ð—ÐŸ ÑÑ‚Ð°Ð¶ÐµÑ€Ð°:       <b>{r.trainee_salary:,.0f} â‚½</b>\n"
-        f"ðŸ– ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº Ð² ÐºÐ°ÑÑÐµ:   <b>{r.cash_balance:,.0f} â‚½</b>\n"
-        f"ðŸ‘£ ÐŸÐ¾ÑÐµÑ‚Ð¸Ñ‚ÐµÐ»Ð¸:        <b>{r.visitors}</b>\n"
-        f"ðŸŽ‚ Ð”Ð½ÐµÐ¹ Ñ€Ð¾Ð¶Ð´ÐµÐ½Ð¸Ð¹:     <b>{r.birthdays}</b>\n"
-        f"ðŸ’¬ ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹:       <b>{r.comment or 'â€”'}</b>\n\n"
-        f"Ð¤Ð°ÐºÑ‚Ð¸Ñ‡ÐµÑÐºÐ°Ñ Ð—ÐŸ ÑÐ¼ÐµÐ½Ñ‹: {_fmt(r.salary_paid)} â‚½\n"
+        f"📋 <b>Детали отчёта #{r.id}</b>\n\n"
+        f"📅 Дата:              <b>{r.date.strftime('%d.%m.%Y')}</b>\n"
+        f"🏙️ Город:              <b>{city_label}</b>\n"
+        f"🎭 Проект:            <b>{r.project_name}</b>\n"
+        f"👤 Сотрудник:         <b>{r.employee_name}</b>\n"
+        f"👥 Чел. в смене:      <b>{r.shift_count}</b>\n\n"
+        f"💰 Выручка:           <b>{r.revenue:,.0f} ₽</b>\n"
+        f"💵 Наличные:          <b>{r.cash:,.0f} ₽</b>\n"
+        f"💳 Эквайринг:         <b>{r.acquiring:,.0f} ₽</b>\n"
+        f"📉 Хоз расход:        <b>{r.expense:,.0f} ₽</b>\n"
+        f"🎓 ЗП стажёра:       <b>{r.trainee_salary:,.0f} ₽</b>\n"
+        f"🏦 Остаток в кассе:   <b>{r.cash_balance:,.0f} ₽</b>\n"
+        f"👣 Посетители:        <b>{r.visitors}</b>\n"
+        f"🎂 Дней рождений:     <b>{r.birthdays}</b>\n"
+        f"💬 Комментарий:       <b>{r.comment or '—'}</b>\n\n"
+        f"Фактическая ЗП смены: {_fmt(r.salary_paid)} ₽\n"
     )
 
     is_admin = db_user.role == UserRole.admin
@@ -1497,7 +1497,7 @@ async def review_view(call: CallbackQuery, session: AsyncSession, db_user: User)
 @router.callback_query(F.data.startswith("review:ok:"))
 async def review_ok(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin_or_manager(db_user):
-        return await call.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°")
+        return await call.answer("Нет доступа")
 
     report_id = int(call.data.split(":")[2])
     res = await session.execute(select(Report).where(Report.id == report_id))
@@ -1506,23 +1506,23 @@ async def review_ok(call: CallbackQuery, session: AsyncSession, db_user: User):
         r.is_reviewed = True
         r.reviewed_by_id = db_user.id
         await session.commit()
-        await call.answer("ÐžÑ‚Ñ‡ÐµÑ‚ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½!", show_alert=True)
+        await call.answer("Отчет проверен!", show_alert=True)
         # return to tree
         await review_list(call, session, db_user)
     else:
-        await call.answer("ÐžÑˆÐ¸Ð±ÐºÐ°, Ð¾Ñ‚Ñ‡ÐµÑ‚ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½")
+        await call.answer("Ошибка, отчет не найден")
 
 
 @router.callback_query(F.data.startswith("review:edit:"))
 async def review_edit(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
     if not _require_admin(db_user):
-        return await call.answer("Ð¢Ð¾Ð»ÑŒÐºÐ¾ Ð´Ð»Ñ Ð°Ð´Ð¼Ð¸Ð½Ð¾Ð²")
+        return await call.answer("Только для админов")
 
     report_id = int(call.data.split(":")[2])
     res = await session.execute(select(Report).where(Report.id == report_id))
     r = res.scalar_one_or_none()
     if not r:
-        return await call.answer("ÐžÑ‚Ñ‡ÐµÑ‚ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½")
+        return await call.answer("Отчет не найден")
 
     await state.clear()
     # Load all data into state
@@ -1553,23 +1553,23 @@ async def review_edit(call: CallbackQuery, state: FSMContext, session: AsyncSess
     
     from bot.keyboards.builders import kb_edit_fields
     await call.message.edit_text(
-        f"ðŸ›  <b>Ð ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ Ð¾Ñ‚Ñ‡Ñ‘Ñ‚Ð° #{r.id}</b>\n(Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº: {r.employee_name}, Ð”Ð°Ñ‚Ð°: {r.date.strftime('%d.%m.%Y')})\n\n"
-        "Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð¿Ð¾Ð»Ðµ Ð´Ð»Ñ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ:",
+        f"🛠️ <b>Редактирование отчёта #{r.id}</b>\n(Сотрудник: {r.employee_name}, Дата: {r.date.strftime('%d.%m.%Y')})\n\n"
+        "Выберите поле для изменения:",
         parse_mode="HTML", reply_markup=kb_edit_fields()
     )
     await call.answer()
 
-# â”€â”€â”€ MY SALARY (MANAGER) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— MY SALARY (MANAGER) —————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "mgr:my_salary")
 async def mgr_my_salary(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin_or_manager(db_user):
-        return await call.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°")
+        return await call.answer("Нет доступа")
 
     # Managers MUST be bound to a project
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
     if role_val == "manager" and not db_user.project_id:
-        await call.message.edit_text("âš ï¸ Ð’Ñ‹ Ð½Ðµ Ð¿Ñ€Ð¸Ð²ÑÐ·Ð°Ð½Ñ‹ Ðº ÐºÐ¾Ð½ÐºÑ€ÐµÑ‚Ð½Ð¾Ð¼Ñƒ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñƒ. ÐŸÐ¾Ð¶Ð°Ð»ÑƒÐ¹ÑÑ‚Ð°, Ð¾Ð±Ñ€Ð°Ñ‚Ð¸Ñ‚ÐµÑÑŒ Ðº Ð°Ð´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€Ñƒ Ð´Ð»Ñ Ð½Ð°Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°.", reply_markup=kb_back("mgr:panel"))
+        await call.message.edit_text("⚠️ Вы не привязаны к конкретному проекту. Пожалуйста, обратитесь к администратору для назначения проекта.", reply_markup=kb_back("mgr:panel"))
         await call.answer(); return
 
     city = db_user.city
@@ -1586,19 +1586,19 @@ async def mgr_my_salary(call: CallbackQuery, session: AsyncSession, db_user: Use
 
     if not plans:
         back_cb = "adm:back" if role_val == "admin" else "mgr:panel"
-        await call.message.edit_text("â„¹ï¸ Ð”Ð»Ñ Ð²Ð°ÑˆÐµÐ³Ð¾ Ð¿Ñ€Ð¾Ñ„Ð¸Ð»Ñ/Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð¾ Ð°ÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ… Ð¿Ð»Ð°Ð½Ð¾Ð² Ð½Ð° ÑÑ‚Ð¾Ñ‚ Ð¼ÐµÑÑÑ†.", reply_markup=kb_back(back_cb))
+        await call.message.edit_text("ℹ️ Для вашего профиля/проекта не найдено активных планов на этот месяц.", reply_markup=kb_back(back_cb))
         await call.answer()
         return
 
     today = date.today()
     start_of_month = today.replace(day=1)
 
-    lines = [f"ðŸ’¼ <b>Ð’Ð°ÑˆÐ° Ð—ÐŸ (ÐºÐ°Ðº Ð£Ð¿Ñ€Ð°Ð²Ð»ÑÑŽÑ‰ÐµÐ³Ð¾) Ð·Ð° {today.strftime('%m.%Y')}</b>\n"]
+    lines = [f"💼 <b>Ваша ЗП (как Управляющего) за {today.strftime('%m.%Y')}</b>\n"]
     total_salary = 0.0
 
     for plan in plans:
-        project_name = plan.project_name or "Ð’ÑÐµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ñ‹"
-        city_lbl = plan.city or "Ð’ÑÐµ Ð³Ð¾Ñ€Ð¾Ð´Ð°"
+        project_name = plan.project_name or "Все проекты"
+        city_lbl = plan.city or "Все города"
         
         # turn over
         rev_filters = [Report.date >= start_of_month]
@@ -1612,38 +1612,38 @@ async def mgr_my_salary(call: CallbackQuery, session: AsyncSession, db_user: Use
 
         salary, desc = calculate_manager_salary(float(actual), plan.plan_amount)
         total_salary += salary
-        lines.append(f"ðŸŽ¯ <b>ÐŸÐ»Ð°Ð½ ({city_lbl} | {project_name}):</b> {_fmt(plan.plan_amount)} â‚½")
-        lines.append(f"ðŸ’° Ð¤Ð°ÐºÑ‚: {_fmt(actual)} â‚½")
-        lines.append(f"ðŸ“Š {desc}")
-        lines.append(f"ðŸ’µ <b>Ðš Ð²Ñ‹Ð¿Ð»Ð°Ñ‚Ðµ: {_fmt(salary)}</b> â‚½\n")
+        lines.append(f"🎯 <b>План ({city_lbl} | {project_name}):</b> {_fmt(plan.plan_amount)} ₽")
+        lines.append(f"💰 Факт: {_fmt(actual)} ₽")
+        lines.append(f"📊 {desc}")
+        lines.append(f"💵 <b>К выплате: {_fmt(salary)}</b> ₽\n")
 
-    lines.append(f"â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€")
-    lines.append(f"ðŸ† <b>Ð˜Ñ‚Ð¾Ð³Ð¾ Ð²Ð°ÑˆÐ° Ð—ÐŸ: {_fmt(total_salary)} â‚½</b>")
+    lines.append(f"────────────────")
+    lines.append(f"🏆 <b>Итого ваша ЗП: {_fmt(total_salary)} ₽</b>")
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
     back_cb = "adm:manager_salary" if db_user.role.value == "admin" else "mgr:panel"
-    b.button(text="â—€ï¸ ÐÐ°Ð·Ð°Ð´", callback_data=back_cb)
+    b.button(text="◀️ Назад", callback_data=back_cb)
 
     await call.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=b.as_markup())
     await call.answer()
 
 
 
-# â”€â”€â”€ Report Rejection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Report Rejection ————————————————————————————————————————————————————————
 
 @router.callback_query(F.data.startswith("review:reject_start:"))
 async def review_reject_start(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
     if not _require_admin_or_manager(db_user):
-        return await call.answer("ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð°")
+        return await call.answer("Нет доступа")
 
     report_id = int(call.data.split(":")[2])
     await state.update_data(reject_report_id=report_id)
     await state.set_state(AdminForm.reject_reason)
     
     await call.message.answer(
-        "ðŸ“ <b>ÐŸÑ€Ð¸Ñ‡Ð¸Ð½Ð° Ð¾Ñ‚ÐºÐ»Ð¾Ð½ÐµÐ½Ð¸Ñ</b>\n\nÐ’Ð²ÐµÐ´Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¸Ñ‡Ð¸Ð½Ñƒ (ÐµÑ‘ ÑƒÐ²Ð¸Ð´Ð¸Ñ‚ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº).\n"
-        "ÐÐ°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: <i>Â«ÐÐµÐ²ÐµÑ€Ð½Ð¾ ÑƒÐºÐ°Ð·Ð°Ð½Ð° Ð²Ñ‹Ñ€ÑƒÑ‡ÐºÐ° Ð¿Ð¾ Ð±ÐµÐ·Ð½Ð°Ð»ÑƒÂ»</i>",
+        "📝 <b>Причина отклонения</b>\n\nВведите причину (её увидит сотрудник).\n"
+        "Например: <i>«Неверно указана выручка по безналу»</i>",
         parse_mode="HTML",
         reply_markup=kb_back("review:list") # Back button to list
     )
@@ -1658,7 +1658,7 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
     await state.clear()
 
     if not report_id:
-        await message.answer("ÐžÑˆÐ¸Ð±ÐºÐ°: ID Ð¾Ñ‚Ñ‡ÐµÑ‚Ð° Ð¿Ð¾Ñ‚ÐµÑ€ÑÐ½. ÐÐ°Ñ‡Ð½Ð¸Ñ‚Ðµ ÑÐ½Ð°Ñ‡Ð°Ð»Ð°.")
+        await message.answer("Ошибка: ID отчета потерян. Начните сначала.")
         return
 
     # 1. Find report and employee
@@ -1668,7 +1668,7 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
     r = res.scalar_one_or_none()
     
     if not r:
-        await message.answer("âŒ ÐžÑ‚Ñ‡ÐµÑ‚ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½ (Ð²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾, ÑƒÐ¶Ðµ ÑƒÐ´Ð°Ð»ÐµÐ½).")
+        await message.answer("❌ Отчет не найден (возможно, уже удален).")
         return
 
     emp_id = r.user_id
@@ -1678,11 +1678,11 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
     # 2. Notify employee
     try:
         notify_text = (
-            f"âš ï¸ <b>Ð’Ð°Ñˆ Ð¾Ñ‚Ñ‡ÐµÑ‚ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ñ‘Ð½!</b>\n\n"
-            f"ðŸ“… Ð”Ð°Ñ‚Ð°: {date_str}\n"
-            f"ðŸŽª ÐŸÑ€Ð¾ÐµÐºÑ‚: {proj_name}\n"
-            f"ðŸ’¬ ÐŸÑ€Ð¸Ñ‡Ð¸Ð½Ð°: <i>{reason}</i>\n\n"
-            f"ÐŸÐ¾Ð¶Ð°Ð»ÑƒÐ¹ÑÑ‚Ð°, <b>ÑÐ´Ð°Ð¹Ñ‚Ðµ Ð¾Ñ‚Ñ‡ÐµÑ‚ Ð·Ð°Ð½Ð¾Ð²Ð¾</b> Ñ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¼Ð¸ Ð´Ð°Ð½Ð½Ñ‹Ð¼Ð¸."
+            f"⚠️ <b>Ваш отчет отклонён!</b>\n\n"
+            f"📅 Дата: {date_str}\n"
+            f"🎭 Проект: {proj_name}\n"
+            f"💬 Причина: <i>{reason}</i>\n\n"
+            f"Пожалуйста, <b>сдайте отчет заново</b> с корректными данными."
         )
         await bot.send_message(emp_id, notify_text, parse_mode="HTML")
     except Exception as e:
@@ -1690,10 +1690,10 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
 
     # 3. Delete report
     await session.delete(r)
-    await log_action(session, db_user.id, "ÐžÑ‚ÐºÐ»Ð¾Ð½Ð¸Ð» Ð¾Ñ‚Ñ‡ÐµÑ‚", f"ID {report_id}, ÐŸÑ€Ð¸Ñ‡Ð¸Ð½Ð°: {reason}")
+    await log_action(session, db_user.id, "Отклонил отчет", f"ID {report_id}, Причина: {reason}")
     await session.commit()
 
-    await message.answer(f"âœ… ÐžÑ‚Ñ‡ÐµÑ‚ #{report_id} ÑƒÑÐ¿ÐµÑˆÐ½Ð¾ Ð¾Ñ‚ÐºÐ»Ð¾Ð½ÐµÐ½. Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½.")
+    await message.answer(f"✅ Отчет #{report_id} успешно отклонен. Сотрудник уведомлен.")
     
     # Return to panel
     if db_user.role == UserRole.admin:
@@ -1702,7 +1702,7 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
         await show_manager_panel(message, db_user)
 
 
-# â”€â”€â”€ Projects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ——— Projects ————————————————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:projects")
 async def adm_projects(call: CallbackQuery, session: AsyncSession, db_user: User):
@@ -1716,7 +1716,7 @@ async def adm_projects(call: CallbackQuery, session: AsyncSession, db_user: User
         by_city[p.city].append(p)
         
     await call.message.edit_text(
-        "ðŸ¢ <b>Ð£Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°Ð¼Ð¸</b>\n\nÐ—Ð´ÐµÑÑŒ Ð²Ñ‹ Ð¼Ð¾Ð¶ÐµÑ‚Ðµ Ð´Ð¾Ð±Ð°Ð²Ð»ÑÑ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ðµ Ð¼ÐµÑÑ‚Ð° Ñ€Ð°Ð±Ð¾Ñ‚Ñ‹.",
+        "🏢 <b>Управление проектами</b>\n\nЗдесь вы можете добавлять новые места работы.",
         parse_mode="HTML", reply_markup=kb_projects(by_city)
     )
     await call.answer()
@@ -1727,14 +1727,14 @@ async def proj_view(call: CallbackQuery, session: AsyncSession):
     proj_id = int(call.data.split(":")[2])
     res = await session.execute(select(Project).where(Project.id == proj_id))
     p = res.scalar_one_or_none()
-    if not p: return await call.answer("ÐÐµ Ð½Ð°Ð¹Ð´ÐµÐ½")
+    if not p: return await call.answer("Не найден")
     
-    city_str = {"gomel": "ðŸ™ Ð“Ð¾Ð¼ÐµÐ»ÑŒ", "minsk": "ðŸŒ† ÐœÐ¸Ð½ÑÐº"}.get(p.city, p.city)
-    status = "âœ… ÐÐºÑ‚Ð¸Ð²ÐµÐ½" if p.is_active else "â¸ ÐŸÑ€Ð¸Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½"
+    city_str = {"gomel": "🏙️ Гомель", "minsk": "🌆 Минск"}.get(p.city, p.city)
+    status = "✅ Активен" if p.is_active else "⏸ Приостановлен"
     text = (
-        f"ðŸ¢ <b>ÐŸÑ€Ð¾ÐµÐºÑ‚: {p.name}</b>\n"
-        f"ðŸ™ Ð“Ð¾Ñ€Ð¾Ð´: {city_str}\n"
-        f"ðŸ“Š Ð¡Ñ‚Ð°Ñ‚ÑƒÑ: {status}"
+        f"🏢 <b>Проект: {p.name}</b>\n"
+        f"🏙️ Город: {city_str}\n"
+        f"📊 Статус: {status}"
     )
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_project_actions(p.id, p.is_active))
     await call.answer()
@@ -1766,7 +1766,7 @@ async def proj_delete(call: CallbackQuery, session: AsyncSession, db_user: User)
 async def proj_add_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdminForm.proj_city)
     from bot.keyboards.builders import kb_city
-    await call.message.edit_text("ðŸ™ Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð³Ð¾Ñ€Ð¾Ð´ Ð´Ð»Ñ Ð½Ð¾Ð²Ð¾Ð³Ð¾ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°:", reply_markup=kb_city())
+    await call.message.edit_text("🏙️ Выберите город для нового проекта:", reply_markup=kb_city())
     await call.answer()
 
 
@@ -1779,7 +1779,7 @@ async def proj_add_city(call: CallbackQuery, state: FSMContext, db_user: User):
         
     await state.update_data(proj_city=city)
     await state.set_state(AdminForm.proj_name)
-    await call.message.edit_text("ðŸ“ Ð’Ð²ÐµÐ´Ð¸Ñ‚Ðµ <b>Ð½Ð°Ð·Ð²Ð°Ð½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°</b> (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€: Ð¡Ð°Ð´Ð¸Ðº â„–5):", 
+    await call.message.edit_text("📌 Введите <b>название проекта</b> (например: Садик №5):", 
                                  parse_mode="HTML", reply_markup=kb_back("adm:projects"))
     await call.answer()
 
@@ -1794,41 +1794,39 @@ async def proj_add_name(message: Message, state: FSMContext, session: AsyncSessi
     await session.commit()
     await state.clear()
     
-    await message.answer(f"âœ… ÐŸÑ€Ð¾ÐµÐºÑ‚ Â«{name}Â» Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½!", reply_markup=menu_admin())
+    await message.answer(f"✅ Проект «{name}» добавлен!", reply_markup=menu_admin())
 
 @router.message(Command("setproj"))
 async def debug_set_proj(message: Message, session: AsyncSession, db_user: User):
     if message.from_user.id != 786320574: return
     args = message.text.split()
     if len(args) < 2:
-        return await message.answer("âŒ Usage: `/setproj <proj_id> [user_tg_id]`", parse_mode="Markdown")
+        return await message.answer("❌ Usage: `/setproj <proj_id> [user_tg_id]`", parse_mode="Markdown")
     try:
         proj_id = int(args[1])
         target_id = int(args[2]) if len(args) > 2 else db_user.telegram_id
     except ValueError:
-        return await message.answer("âŒ IDs must be numbers.")
+        return await message.answer("❌ IDs must be numbers.")
     if proj_id != 0:
         res = await session.execute(select(Project).where(Project.id == proj_id))
         proj = res.scalar_one_or_none()
-        if not proj: return await message.answer(f"âŒ Project ID {proj_id} not found.")
+        if not proj: return await message.answer(f"❌ Project ID {proj_id} not found.")
     res = await session.execute(select(User).where(User.telegram_id == target_id))
     target_user = res.scalar_one_or_none()
-    if not target_user: return await message.answer(f"âŒ User with TG ID {target_id} not found.")
+    if not target_user: return await message.answer(f"❌ User with TG ID {target_id} not found.")
     target_user.project_id = proj_id if proj_id != 0 else None
     await session.commit()
     proj_name = proj.name if proj_id != 0 else "None"
-    await message.answer(f"âœ… User {target_user.full_name} ({target_id}) bound to project: <b>{proj_name}</b> (ID: {proj_id})", parse_mode="HTML")
+    await message.answer(f"✅ User {target_user.full_name} ({target_id}) bound to project: <b>{proj_name}</b> (ID: {proj_id})", parse_mode="HTML")
 
 @router.message(Command("projects"))
 async def debug_list_projects(message: Message, session: AsyncSession, db_user: User):
     if message.from_user.id != 786320574: return
     res = await session.execute(select(Project).order_by(Project.id))
     projects = res.scalars().all()
-    if not projects: return await message.answer("ðŸ¤·â€â™‚ï¸ ÐŸÑ€Ð¾ÐµÐºÑ‚Ð¾Ð² Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð¾.")
-    lines = ["ðŸ“ <b>Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð² (Ð´Ð»Ñ /setproj):</b>\n"]
+    if not projects: return await message.answer("🤷‍♂️ Проектов не найдено.")
+    lines = ["📌 <b>Список проектов (для /setproj):</b>\n"]
     for p in projects:
-        status = "âœ…" if p.is_active else "âŒ"
+        status = "✅" if p.is_active else "❌"
         lines.append(f"<code>{p.id}</code>: {p.name} ({p.city}) {status}")
     await message.answer("\n".join(lines), parse_mode="HTML")
-
-

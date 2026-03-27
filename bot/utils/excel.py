@@ -13,7 +13,8 @@ from sqlalchemy import select, or_
 from bot.database.models import Report, User, Plan, ManagementExpense, Project
 
 
-# â”€â”€â”€ Palette â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# --- Palette -----------------------------------------------------------------
+
 _F_BLACK  = Font(bold=False, color="000000", size=9)
 _F_BOLD   = Font(bold=True,  color="000000", size=9)
 _F_WHITE  = Font(bold=True,  color="FFFFFF", size=9)
@@ -25,7 +26,7 @@ _FILL_PROJECT   = PatternFill("solid", fgColor="B8CCE4")   # light blue
 _FILL_GREEN     = PatternFill("solid", fgColor="C4D79B")   # light green 
 _FILL_BLUE      = PatternFill("solid", fgColor="95B3D7")   # blue headers
 _FILL_GRAY      = PatternFill("solid", fgColor="F2F2F2")   # alt row
-_FILL_RED_HDR   = PatternFill("solid", fgColor="FF0000")   # Red header for Ð˜Ð¢ÐžÐ“Ðž
+_FILL_RED_HDR   = PatternFill("solid", fgColor="FF0000")   # Red header for ИТОГО
 _FILL_BLUE_IN   = PatternFill("solid", fgColor="9DC3E6")   # total row color
 _FILL_WHITE     = PatternFill("solid", fgColor="FFFFFF")   # white background for days
 
@@ -46,8 +47,8 @@ _BORDER_RIGHT_THICK = Border(left=_thin,  right=_thick, top=_thin, bottom=_thin)
 _BORDER_TOP_MED     = Border(left=_thin,  right=_thin,  top=_med,  bottom=_thin)
 _BORDER_BOT_MED     = Border(left=_thin,  right=_thin,  top=_thin,  bottom=_med)
 
-_NUM_FMT = '#,##0.00 "Br"'
-_INT_FMT = '#,##0 "Br"'
+_NUM_FMT = '#,##0.00 "₽"'
+_INT_FMT = '#,##0 "₽"'
 _PCT_FMT = '0%'
 
 
@@ -89,7 +90,7 @@ def _merge(ws, r1, c1, r2, c2, value="", fill=None, font=None, align=None, fmt=N
 
 
 def _month_label(m: int) -> str:
-    return ["Ð¯ÐÐ’", "Ð¤Ð•Ð’", "ÐœÐÐ ", "ÐÐŸÐ ", "ÐœÐÐ™", "Ð˜Ð®Ð", "Ð˜Ð®Ð›", "ÐÐ’Ð“", "Ð¡Ð•Ð", "ÐžÐšÐ¢", "ÐÐžÐ¯", "Ð”Ð•Ðš"][m-1]
+    return ["ЯНВ", "ФЕВ", "МАР", "АПР", "МАЙ", "ИЮН", "ИЮЛ", "АВГ", "СЕН", "ОКТ", "НОЯ", "ДЕК"][m-1]
 
 
 async def generate_monthly_calendar(
@@ -102,7 +103,8 @@ async def generate_monthly_calendar(
     start = date(year, month, 1)
     end   = date(year, month, days_in_month)
 
-    # â”€â”€ Fetch all relevant data once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # --- Fetch all relevant data once ----------------------------------------
+
     q = select(Report).where(Report.date >= start, Report.date <= end)
     if city != "all": q = q.where(or_(Report.city == city, Report.city == None))
     res = await session.execute(q.order_by(Report.project_name, Report.date))
@@ -126,14 +128,14 @@ async def generate_monthly_calendar(
     wb.remove(wb.active)
 
     headers = [
-        "Ð”Ð¾Ñ…Ð¾Ð´Ñ‹", "Ð½Ð°Ð».", "Ð±ÐµÐ·Ð½Ð°Ð».", "Ð Ð°ÑÑ…Ð¾Ð´Ñ‹",
-        "Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð°\nÑ„Ð¾Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð°", "Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð°\nÑÑ‚Ð°Ð¶ÐµÑ€Ð°", "Ñ…Ð¾Ð· Ñ€Ð°ÑÑ…Ð¾Ð´", 
-        "Ñ€Ð°ÑÑ…Ð¾Ð´Ð½Ð¸Ðº", "Ð£Ð¡Ð 6%", "Ð½Ð°Ð»Ð¾Ð³Ð¸ Ð¿Ð¾\nÐ—ÐŸ 35,6%", "Ñ‚ÐµÑ…Ð½Ð¸ÐºÐ°", "Ð°Ñ€ÐµÐ½Ð´Ð°", 
-        "ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº ÐºÐ¾Ð½ÐµÑ† Ð´Ð½Ñ", "Ð¸Ð· Ð½Ð¸Ñ… Ð½Ð°Ð»."
+        "Доходы", "нал.", "безнал.", "Расходы",
+        "зарплата\nфотографа", "зарплата\nстажера", "хоз расход", 
+        "расходник", "УСН 6%", "налоги по\nЗП 35,6%", "техника", "аренда", 
+        "Остаток конец дня", "из них нал."
     ]
 
     def build_city_sheet(sheet_city: str, reports: list[Report], plans: list[Plan], mgmt_list: list[ManagementExpense]):
-        city_label = {"gomel": "Ð“Ð¾Ð¼ÐµÐ»ÑŒ", "minsk": "ÐœÐ¸Ð½ÑÐº"}.get(sheet_city, sheet_city.title())
+        city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(sheet_city, sheet_city.title())
         ws = wb.create_sheet(title=city_label)
         
         ws.column_dimensions["A"].width = 16
@@ -195,11 +197,11 @@ async def generate_monthly_calendar(
                 # Fetch mgmt expenses recorded SPECIFICALLY on this day!
                 def _d_sum(cat): return float(sum(m.amount for m in linked_mgmt if m.category == cat and m.date.day == d))
                 
-                day_cons = _d_sum("Ñ€Ð°ÑÑ…Ð¾Ð´Ð½Ð¸Ðº")
-                day_usn  = day_auto_usn + _d_sum("ÑƒÑÐ½_6")
-                day_tax  = day_auto_tax_zp + _d_sum("Ð½Ð°Ð»Ð¾Ð³Ð¸_Ð·Ð¿")
-                day_tech = _d_sum("Ñ‚ÐµÑ…Ð½Ð¸ÐºÐ°")
-                day_rent = _d_sum("Ð°Ñ€ÐµÐ½Ð´Ð°")
+                day_cons = _d_sum("расходник")
+                day_usn  = day_auto_usn + _d_sum("усн_6")
+                day_tax  = day_auto_tax_zp + _d_sum("налоги_зп")
+                day_tech = _d_sum("техника")
+                day_rent = _d_sum("аренда")
                 
                 day_all_mgmt = day_cons + day_usn + day_tax + day_tech + day_rent
                 day_total_dist_exp = day_sal_total + day_tra_total + day_exp + day_all_mgmt
@@ -241,29 +243,29 @@ async def generate_monthly_calendar(
 
             proj_start_row = row  # Track start for outer thick border
 
-            # Row 1: Top header with "Ð² Ð½Ð°Ð»" labels
+            # Row 1: Top header with "в нал" labels
             ws.row_dimensions[row].height = 18
             _merge(ws, row, 1, row, 2, p_name, fill=_FILL_PROJECT, font=_F_BOLD, align=_CTR)
             _cell(ws, row, 3, "", fill=_FILL_PROJECT)
             _cell(ws, row, 4, "", fill=_FILL_PROJECT)
             for i in range(14):
-                if headers[i] in ["Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð°\nÑ„Ð¾Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð°", "Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð°\nÑÑ‚Ð°Ð¶ÐµÑ€Ð°"]:
-                    _cell(ws, row, 5 + i, "Ð² Ð½Ð°Ð»", fill=_FILL_PROJECT, align=_CTR, font=_F_RED)
+                if headers[i] in ["зарплата\nфотографа", "зарплата\nстажера"]:
+                    _cell(ws, row, 5 + i, "в нал", fill=_FILL_PROJECT, align=_CTR, font=_F_RED)
                 else:
                     _cell(ws, row, 5 + i, "", fill=_FILL_PROJECT)
             row += 1
 
             # Row 2: Headers
             ws.row_dimensions[row].height = 32
-            _cell(ws, row, 1, "ÐŸÐ»Ð°Ð½", fill=_FILL_PROJECT, align=_LEFT)
+            _cell(ws, row, 1, "План", fill=_FILL_PROJECT, align=_LEFT)
             _cell(ws, row, 2, float(p_plan), fill=_FILL_PROJECT, fmt=_INT_FMT, align=_CTR)
-            _cell(ws, row, 3, "Ð”ÐÐ¢Ð", fill=_FILL_BLUE, font=_F_BOLD, align=_CTR)
-            _cell(ws, row, 4, "Ð¤Ð˜Ðž", fill=_FILL_BLUE, font=_F_BOLD, align=_CTR)
+            _cell(ws, row, 3, "ДАТА", fill=_FILL_BLUE, font=_F_BOLD, align=_CTR)
+            _cell(ws, row, 4, "ФИО", fill=_FILL_BLUE, font=_F_BOLD, align=_CTR)
             for i, h in enumerate(headers):
                 c = _cell(ws, row, 5 + i, h, fill=_FILL_BLUE, align=_CTR)
-                if h in ["Ð”Ð¾Ñ…Ð¾Ð´Ñ‹", "Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð°\nÑ„Ð¾Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð°", "ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº ÐºÐ¾Ð½ÐµÑ† Ð´Ð½Ñ", "Ð¸Ð· Ð½Ð¸Ñ… Ð½Ð°Ð»."]:
+                if h in ["Доходы", "зарплата\nфотографа", "Остаток конец дня", "из них нал."]:
                     c.font = _F_GREEN
-                elif h in ["Ð½Ð°Ð».", "Ð±ÐµÐ·Ð½Ð°Ð».", "Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð°\nÑÑ‚Ð°Ð¶ÐµÑ€Ð°"]:
+                elif h in ["нал.", "безнал.", "зарплата\nстажера"]:
                     c.font = _F_RED
                 else:
                     c.font = _F_BLUE
@@ -271,7 +273,7 @@ async def generate_monthly_calendar(
             _apply_border(ws, row, 1, row, 18, "medium")
             row += 1
 
-            # Row 3: Total ("ÐžÐ±Ñ‰Ð°Ñ")
+            # Row 3: Total ("Общая")
             grand_total_exp = total_sal + total_tra + total_exp + (p_cons + p_usn + p_tax + p_tech + p_rent)
             
             # Append city totals
@@ -290,10 +292,10 @@ async def generate_monthly_calendar(
             c_grand_exp += grand_total_exp
 
             ws.row_dimensions[row].height = 18
-            _cell(ws, row, 1, "Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¾", fill=_FILL_PROJECT, align=_LEFT)
+            _cell(ws, row, 1, "Выполнено", fill=_FILL_PROJECT, align=_LEFT)
             _cell(ws, row, 2, total_pct, fill=_FILL_PROJECT, fmt=_PCT_FMT, align=_CTR)
             _cell(ws, row, 3, "", fill=_FILL_GRAY)
-            _cell(ws, row, 4, "ÐžÐ±Ñ‰Ð°Ñ", fill=_FILL_GRAY, font=_F_BOLD, align=_CTR)
+            _cell(ws, row, 4, "Общая", fill=_FILL_GRAY, font=_F_BOLD, align=_CTR)
             _cell(ws, row, 5, total_rev, fill=_FILL_BLUE_IN, fmt=_NUM_FMT)
             _cell(ws, row, 6, total_cash, fill=_FILL_BLUE_IN, fmt=_NUM_FMT) 
             _cell(ws, row, 7, total_acq, fill=_FILL_BLUE_IN, fmt=_NUM_FMT)
@@ -371,36 +373,36 @@ async def generate_monthly_calendar(
 
         if len(projects_sorted) > 0:
             row += 1  # Add a tiny gap before total
-            _merge(ws, row, 1, row, 18, f"Ð˜Ð¢ÐžÐ“Ðž ÐŸÐž Ð’Ð¡Ð•Ðœ ÐŸÐ ÐžÐ•ÐšÐ¢ÐÐœ â€” {city_label}", fill=_FILL_RED_HDR, font=_F_WHITE, align=_CTR)
+            _merge(ws, row, 1, row, 18, f"ИТОГО ПО ВСЕМ ПРОЕКТАМ — {city_label}", fill=_FILL_RED_HDR, font=_F_WHITE, align=_CTR)
             row += 1
             
             start_row = row
             
-            # Row A-B: ÐŸÐ»Ð°Ð½ and Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¾
-            _cell(ws, start_row, 1, "ÐŸÐ»Ð°Ð½", font=_F_BOLD)
+            # Row A-B: План and Выполнено
+            _cell(ws, start_row, 1, "План", font=_F_BOLD)
             _cell(ws, start_row, 2, float(c_plan), fmt=_INT_FMT, align=_CTR)
             
             c_pct = (c_rev / c_plan) if c_plan > 0 else 0.0
-            _cell(ws, start_row + 1, 1, "Ð’Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¾", font=_F_RED)
+            _cell(ws, start_row + 1, 1, "Выполнено", font=_F_RED)
             _cell(ws, start_row + 1, 2, c_pct, fill=_FILL_GREEN, fmt=_PCT_FMT, align=_CTR)
 
             # Row C-D: Vertical metrics list
             metrics = [
-                ("Ð”Ð¾Ñ…Ð¾Ð´Ñ‹", c_rev, _FILL_GREEN),
-                ("Ð½Ð°Ð».", c_cash, None),
-                ("Ð±ÐµÐ·Ð½Ð°Ð».", c_acq, None),
-                ("Ð Ð°ÑÑ…Ð¾Ð´Ñ‹", c_grand_exp, _FILL_GREEN),
-                ("Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð° Ð¤Ð¾Ñ‚Ð¾Ð³Ñ€Ð°Ñ„Ð°", c_sal, None),
-                ("Ð·Ð°Ñ€Ð¿Ð»Ð°Ñ‚Ð° Ð¡Ñ‚Ð°Ð¶ÐµÑ€Ð°", c_tra, None),
-                ("Ñ…Ð¾Ð· Ñ€Ð°ÑÑ…Ð¾Ð´", c_exp, None),
-                ("Ñ€Ð°ÑÑ…Ð¾Ð´Ð½Ð¸Ðº", c_cons, None),
-                ("Ð£Ð¡Ð 6%", c_usn, None),
-                ("Ð½Ð°Ð»Ð¾Ð³Ð¸ Ð¿Ð¾ Ð—ÐŸ 35,6%", c_tax, None),
-                ("Ñ‚ÐµÑ…Ð½Ð¸ÐºÐ°", c_tech, None),
-                ("Ð°Ñ€ÐµÐ½Ð´Ð°", c_rent, None),
-                ("Ð´Ñ€ÑƒÐ³Ð¾Ðµ", 0.0, None), 
-                ("ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº ÐºÐ¾Ð½ÐµÑ† Ð´Ð½Ñ", c_rev - c_grand_exp, _FILL_GREEN),
-                ("Ð¸Ð· Ð½Ð¸Ñ… Ð½Ð°Ð».", c_cash - c_exp - c_tra, _FILL_GREEN),
+                ("Доходы", c_rev, _FILL_GREEN),
+                ("нал.", c_cash, None),
+                ("безнал.", c_acq, None),
+                ("Расходы", c_grand_exp, _FILL_GREEN),
+                ("зарплата Фотографа", c_sal, None),
+                ("зарплата Стажера", c_tra, None),
+                ("хоз расход", c_exp, None),
+                ("расходник", c_cons, None),
+                ("УСН 6%", c_usn, None),
+                ("налоги по ЗП 35,6%", c_tax, None),
+                ("техника", c_tech, None),
+                ("аренда", c_rent, None),
+                ("другое", 0.0, None), 
+                ("Остаток конец дня", c_rev - c_grand_exp, _FILL_GREEN),
+                ("из них нал.", c_cash - c_exp - c_tra, _FILL_GREEN),
             ]
             
             for i, (name, val, fill) in enumerate(metrics):
@@ -424,7 +426,7 @@ async def generate_monthly_calendar(
             build_city_sheet(c_id, city_reports, city_plans, city_mgmt)
 
     if len(wb.sheetnames) == 0:
-        wb.create_sheet(title="ÐÐµÑ‚ Ð”Ð°Ð½Ð½Ñ‹Ñ…")
+        wb.create_sheet(title="Нет Данных")
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -444,7 +446,7 @@ async def generate_excel_report(session: AsyncSession, start_date: date, end_dat
 
     wb2 = WB()
     ws2 = wb2.active
-    ws2.title = f"ÐžÑ‚Ñ‡ÐµÑ‚ {start_date.strftime('%d.%m')}-{end_date.strftime('%d.%m.%Y')}"
+    ws2.title = f"Отчет {start_date.strftime('%d.%m')}-{end_date.strftime('%d.%m.%Y')}"
 
     H_FONT = Font(bold=True, color="FFFFFF", size=11)
     H_FILL = PatternFill("solid", fgColor="1F4E79")
@@ -456,9 +458,9 @@ async def generate_excel_report(session: AsyncSession, start_date: date, end_dat
     BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     headers = [
-        ("Ð”Ð°Ñ‚Ð°", 13), ("ÐŸÑ€Ð¾ÐµÐºÑ‚", 22), ("Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº", 20), ("Ð§ÐµÐ».", 7),
-        ("Ð’Ñ‹Ñ€ÑƒÑ‡ÐºÐ°", 13), ("ÐÐ°Ð»", 13), ("Ð‘ÐµÐ·Ð½Ð°Ð»", 13), ("Ð—ÐŸ", 13),
-        ("Ð Ð°ÑÑ…Ð¾Ð´", 13), ("ÐžÑÑ‚Ð°Ñ‚Ð¾Ðº", 14), ("ÐŸÐ¾ÑÐµÑ‚.", 9), ("Ð”Ð ", 6), ("ÐšÐ¾Ð¼Ð¼ÐµÐ½Ñ‚Ð°Ñ€Ð¸Ð¹", 30),
+        ("Дата", 13), ("Проект", 22), ("Сотрудник", 20), ("Чел.", 7),
+        ("Выручка", 13), ("Нал", 13), ("Безнал", 13), ("ЗП", 13),
+        ("Расход", 13), ("Остаток", 14), ("Посетит.", 9), ("ДР", 6), ("Комментарий", 30),
     ]
     for col, (h, w) in enumerate(headers, 1):
         c = ws2.cell(row=1, column=col, value=h)
@@ -489,7 +491,7 @@ async def generate_excel_report(session: AsyncSession, start_date: date, end_dat
         totals["bdays"]    += rep.birthdays
 
     tr = len(rows) + 2
-    summary = ["Ð˜Ð¢ÐžÐ“Ðž", "", "", "", totals["revenue"], totals["cash"], totals["acq"],
+    summary = ["ИТОГО", "", "", "", totals["revenue"], totals["cash"], totals["acq"],
                 totals["salary"], totals["expense"], "", totals["visitors"], totals["bdays"], ""]
     for ci, v in enumerate(summary, 1):
         c = ws2.cell(row=tr, column=ci, value=v)

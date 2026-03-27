@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    logger.info("Initializing databaseâ€¦")
+    logger.info("Initializing database")
     await init_db()
 
     bot = Bot(
@@ -33,22 +33,22 @@ async def main() -> None:
     dp.message.middleware(DatabaseMiddleware())
     dp.callback_query.middleware(DatabaseMiddleware())
 
-    # Register routers (order matters â€” common first for global commands)
+    # Register routers (order matters — common first for global commands)
     dp.include_router(common.router)
     dp.include_router(report.router)
     dp.include_router(admin.router)
     dp.include_router(cabinet.router)
 
-    logger.info("Starting schedulerâ€¦")
+    logger.info("Starting scheduler…")
     scheduler = setup_scheduler(bot)
     scheduler.start()
 
-    logger.info("Starting botâ€¦")
+    logger.info("Starting bot…")
     while True:
         try:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         except Exception as e:
-            logger.error(f"Ð‘Ð¾Ñ‚ ÑƒÐ¿Ð°Ð» Ñ Ð¾ÑˆÐ¸Ð±ÐºÐ¾Ð¹: {e}. ÐŸÐµÑ€ÐµÐ·Ð°Ð¿ÑƒÑÐº Ñ‡ÐµÑ€ÐµÐ· 5 ÑÐµÐºÑƒÐ½Ð´â€¦")
+            logger.error(f"Бот упал с ошибкой: {e}. Перезапуск через 5 секунд…")
             await asyncio.sleep(5)
 
 
