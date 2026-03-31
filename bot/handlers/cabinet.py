@@ -39,7 +39,7 @@ async def cab_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
     
     msg = (
         f"📊 <b>Ваша статистика</b>\n\n"
-        f"📈 Заработано в этом месяце: <b>{total_month:,.0f} ₽</b>\n\n"
+        f"📈 Заработано в этом месяце: <b>{total_month:,.0f} BYN</b>\n\n"
         f"📅 Данные на {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     )
     
@@ -64,7 +64,7 @@ async def cab_history(call: CallbackQuery, session: AsyncSession, db_user: User)
     lines = ["📜 <b>Последние выплаты:</b>\n"]
     for r in reports:
         pdate = r.payment_date.strftime("%d.%m.%Y") if r.payment_date else "?"
-        lines.append(f"▪️ {pdate}: <b>{r.salary_paid:,.0f} ₽</b> ({r.date.strftime('%d.%m')})")
+        lines.append(f"▪️ {pdate}: <b>{r.salary_paid:,.0f} BYN</b> ({r.date.strftime('%d.%m')})")
         
     await call.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb_cabinet_main())
     await call.answer()

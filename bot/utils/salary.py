@@ -90,9 +90,8 @@ def calculate_photographer_salary(
     city = city.lower()
     rules = _get_rules(city, weekday)
     base, pct, _ = _apply_tiers(revenue, rules)
-    pct_total = revenue * pct
-    pct_per_person = pct_total / max(shift_count, 1)
-    salary = round(base + pct_per_person, 2)
+    total_salary = base + (revenue * pct)
+    salary = round(total_salary / max(shift_count, 1), 2)
 
     city_label = CITY_LABELS.get(city, city)
     day_label = _day_type_label(city, weekday)

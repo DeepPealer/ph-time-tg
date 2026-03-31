@@ -62,12 +62,13 @@ def kb_analytics_cities() -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
-def kb_analytics(city: str) -> InlineKeyboardMarkup:
+def kb_analytics(city: str, project_name: str = None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="📈 Выручка (30 дн)", callback_data=f"chart:revenue:{city}")
-    b.button(text="📊 Выручка за год", callback_data=f"chart:revenue_year:{city}")
-    b.button(text="🎯 Выполнение планов", callback_data=f"chart:plans:{city}")
-    b.button(text="⬅️ Выбор города", callback_data="adm:analytics")
+    suffix = f":{project_name}" if project_name else ""
+    b.button(text="📈 Выручка (30 дн)",   callback_data=f"chart:revenue:{city}{suffix}")
+    b.button(text="📅 Выполнение плана", callback_data=f"chart:plan:{city}{suffix}")
+    b.button(text="📊 Годовая выручка",   callback_data=f"chart:revenue_year:{city}{suffix}")
+    b.button(text="⬅️ Назад",           callback_data=f"chart_city:{city}")
     b.adjust(1)
     return b.as_markup()
 
@@ -306,7 +307,6 @@ def kb_employee_actions(tg_id: int, role: str, city: str | None = None) -> Inlin
 
     b.button(text="📋 Архив отчётов",         callback_data=f"emp:archive:{tg_id}")
     b.button(text="🗑️ Удалить",               callback_data=f"emp:delete:{tg_id}")
-    b = InlineKeyboardBuilder()
     b.button(text="📅 Поиск по дате", callback_data="adm:reports_by_date")
     b.button(text="◀️ Назад",           callback_data="adm:back")
     b.adjust(1)
@@ -318,7 +318,7 @@ def kb_salary_levels(levels: list) -> InlineKeyboardMarkup:
     for lvl in sorted(levels, key=lambda x: x.level):
         mx = f"до {lvl.threshold_max:.0f}" if lvl.threshold_max else "∞"
         b.button(
-            text=f"Ур.{lvl.level}: {lvl.threshold_min:.0f}–{mx}₽ | {lvl.percentage*100:.0f}%",
+            text=f"Ур.{lvl.level}: {lvl.threshold_min:.0f}–{mx}BYN | {lvl.percentage*100:.0f}%",
             callback_data=f"sal:edit:{lvl.id}"
         )
     b.button(text="⬅️ Назад", callback_data="adm:back")
@@ -341,7 +341,7 @@ def kb_plans(plans_by_city: dict) -> InlineKeyboardMarkup:
         for p in plans:
             proj = p.project_name or "Все проекты"
             period = "день" if p.period == "day" else "мес"
-            label = f"{'✅' if p.is_active else '⏸'} {proj}: {p.plan_amount:.0f}₽/{period}"
+            label = f"{'✅' if p.is_active else '⏸'} {proj}: {p.plan_amount:.0f}BYN/{period}"
             b.button(text=label, callback_data=f"plan:toggle:{p.id}")
             b.button(text="🗑️", callback_data=f"plan:delete:{p.id}")
     
@@ -373,13 +373,26 @@ def kb_mgmt_categories(is_admin: bool = False) -> InlineKeyboardMarkup:
         b.button(text="🏦 УСН 6%",      callback_data="mgmt:cat:усн_6")
         b.button(text="⚖️ Налоги ЗП 35.6%", callback_data="mgmt:cat:налоги_зп")
     b.button(text="➕ Другое",      callback_data="mgmt:cat:другое")
+    if is_admin:
+        b.button(text="🔍 Список/Удалить", callback_data="mgmt:list_start")
     b.button(text="⬅️ Назад",      callback_data="adm:back")
     
-    # Adjust: if admin, 2-2-2. If manager, 2-1-1
+    # Adjust: if admin, 2-2-2-1-1. If manager, 2-1-1
     if is_admin:
-        b.adjust(2, 2, 2)
+        b.adjust(2, 2, 2, 1, 1)
     else:
         b.adjust(2, 1, 1)
+    return b.as_markup()
+
+def kb_mgmt_list(expenses: list) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for e in expenses:
+        proj_part = f" [{e.project_name}]" if e.project_name else ""
+        text = f"{e.category.title()} | {e.amount:,.0f} р{proj_part}"
+        b.button(text=text, callback_data="none")
+        b.button(text="🗑️", callback_data=f"mgmt:del:{e.id}")
+    b.button(text="⬅️ Назад", callback_data="mgmt:list_start")
+    b.adjust(2)
     return b.as_markup()
 
 
@@ -503,5 +516,18 @@ def kb_report_search_nav() -> InlineKeyboardMarkup:
     b.button(text="📅 Поиск по дате", callback_data="adm:reports_by_date")
     b.button(text="📅 Месячный отчёт (Excel)", callback_data="period:monthly_calendar")
     b.button(text="⬅️ Назад", callback_data="adm:back")
+    b.adjust(1)
+    return b.as_markup()
+
+def kb_analytics_options(city: str, projects: list) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    city_lbl = {"gomel": "весь Гомель", "minsk": "весь Минск", "all": "все города"}.get(city, "весь город")
+    b.button(text=f"📊 {city_lbl.upper()}", callback_data=f"chart_options:{city}:none")
+    
+    if city != "all":
+        for p in sorted(projects, key=lambda x: x.name):
+            b.button(text=f"📍 {p.name}", callback_data=f"chart_options:{city}:{p.name}")
+            
+    b.button(text="⬅️ Назад", callback_data="adm:analytics")
     b.adjust(1)
     return b.as_markup()

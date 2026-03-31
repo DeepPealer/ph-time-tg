@@ -13,7 +13,7 @@ plt.rcParams['font.sans-serif'] = ['Inter', 'DejaVu Sans']
 plt.rcParams['axes.titlepad'] = 20
 plt.rcParams['axes.labelpad'] = 10
 
-async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: str = None) -> io.BytesIO:
+async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: str = None, project_name: str = None) -> io.BytesIO:
     """Generate a premium-style chart showing daily revenue."""
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
@@ -21,6 +21,8 @@ async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: 
     filters = [Report.date >= start_date]
     if city:
         filters.append(Report.city == city)
+    if project_name:
+        filters.append(Report.project_name == project_name)
     
     stmt = (
         select(Report.date, func.sum(Report.revenue))
@@ -48,8 +50,12 @@ async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: 
     # Fill the area under the line
     ax.fill_between(df['date'], df['revenue'], color='#4e73df', alpha=0.15)
     
-    ax.set_title(f'Динамика выручки за {days} дней', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Выручка (₽)', fontsize=12)
+    title = f'Динамика выручки за {days} дней'
+    if project_name: title += f'\n[{project_name}]'
+    elif city: title += f' ({city.title()})'
+    
+    ax.set_title(title, fontsize=18, fontweight='bold')
+    ax.set_ylabel('Выручка (BYN)', fontsize=12)
     ax.set_xlabel(None)
     
     # Format dates
@@ -68,13 +74,15 @@ async def generate_revenue_chart(session: "AsyncSession", days: int = 30, city: 
     
     return buf
 
-async def generate_plan_performance_chart(session: "AsyncSession", city: str = None) -> io.BytesIO:
+async def generate_plan_performance_chart(session: "AsyncSession", city: str = None, project_name: str = None) -> io.BytesIO:
     """Generate a clean bar chart showing plan performance."""
     from bot.database.models import Plan
     
     filters_plan = [Plan.is_active == True, Plan.period == 'month', Plan.project_name != None]
     if city:
         filters_plan.append(Plan.city == city)
+    if project_name:
+        filters_plan.append(Plan.project_name == project_name)
     
     stmt_plans = select(Plan).where(*filters_plan)
     res_plans = await session.execute(stmt_plans)
@@ -125,7 +133,7 @@ async def generate_plan_performance_chart(session: "AsyncSession", city: str = N
     
     return buf
 
-async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = None) -> io.BytesIO:
+async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = None, project_name: str = None) -> io.BytesIO:
     """Generate a monthly revenue breakdown chart for the current year."""
     today = date.today()
     start_year = today.replace(month=1, day=1)
@@ -133,6 +141,8 @@ async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = Non
     filters = [Report.date >= start_year]
     if city:
         filters.append(Report.city == city)
+    if project_name:
+        filters.append(Report.project_name == project_name)
     
     stmt = (
         select(
@@ -162,8 +172,12 @@ async def generate_yearly_revenue_chart(session: "AsyncSession", city: str = Non
     # Use a gradient-like palette
     sns.barplot(data=df, x='month_name', y='revenue', palette="viridis", ax=ax, hue='month_name', legend=False)
     
-    ax.set_title(f'Годовая выручка: {today.year}', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Сумма (₽)', fontsize=12)
+    title = f'Годовая выручка: {today.year}'
+    if project_name: title += f'\n[{project_name}]'
+    elif city: title += f' ({city.title()})'
+    
+    ax.set_title(title, fontsize=18, fontweight='bold')
+    ax.set_ylabel('Сумма (BYN)', fontsize=12)
     ax.set_xlabel(None)
     
     # Label formatting

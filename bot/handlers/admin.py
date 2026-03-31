@@ -1,4 +1,4 @@
-﻿from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime
 from calendar import monthrange
 import html
 
@@ -49,6 +49,7 @@ class AdminForm(StatesGroup):
     report_search_proj = State()
     proj_city         = State()
     proj_name         = State()
+    mgmt_list_date    = State()
 
 class ManagerMgmtForm(StatesGroup):
     date     = State()
@@ -65,14 +66,12 @@ def _require_admin_or_manager(db_user: User) -> bool:
     return db_user.role in (UserRole.admin, UserRole.manager) and db_user.is_active
 
 
-def _kb_manager_main() -> "InlineKeyboardMarkup":
-    from bot.keyboards.builders import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardMarkup
+def _kb_manager_main() -> InlineKeyboardMarkup:
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
-    b.button(text="📋 Проверка отчётов", callback_data="review:list")
-    b.button(text="💼 Моя ЗП", callback_data="mgr:my_salary")
-    b.button(text="📂 Упр. расходы", callback_data="adm:mgmt_expenses")
-    b.button(text="📊 Аналитика", callback_data="adm:analytics")
+    b.button(text="📋 Проверка отчётов", callback_data="review:list:0")
+    b.button(text="📈 Моя ЗП",            callback_data="mgr:my_salary")
+    b.button(text="📂 Управл. расходы",    callback_data="mgr:mgmt_start")
     b.adjust(1)
     return b.as_markup()
 
@@ -129,7 +128,8 @@ async def adm_reports(call: CallbackQuery, db_user: User):
 
 
 @router.callback_query(F.data == "adm:reports_by_date")
-async def adm_reports_by_date_start(call: CallbackQuery, state: FSMContext):
+async def adm_reports_by_date_start(call: CallbackQuery, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return
     await state.set_state(AdminForm.report_search_date)
     await call.message.edit_text(
         "📅 <b>Поиск отчётов по дате</b>\n\nВведите дату в формате ДД.ММ.ГГГГ\n(например: 26.03.2026):",
@@ -139,7 +139,8 @@ async def adm_reports_by_date_start(call: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminForm.report_search_date)
-async def adm_reports_by_date_input(message: Message, state: FSMContext):
+async def adm_reports_by_date_input(message: Message, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return
     try:
         dt = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
         await state.update_data(search_date=dt.isoformat())
@@ -151,7 +152,8 @@ async def adm_reports_by_date_input(message: Message, state: FSMContext):
 
 
 @router.callback_query(AdminForm.report_search_city)
-async def adm_reports_by_date_city(call: CallbackQuery, state: FSMContext, session: AsyncSession):
+async def adm_reports_by_date_city(call: CallbackQuery, state: FSMContext, db_user: User, session: AsyncSession):
+    if not _require_admin(db_user): return
     city = call.data.split(":")[2]
     city_val = city if city != "none" else None
     await state.update_data(search_city=city_val)
@@ -176,7 +178,8 @@ async def adm_reports_by_date_city(call: CallbackQuery, state: FSMContext, sessi
 
 
 @router.callback_query(AdminForm.report_search_proj)
-async def adm_reports_by_date_finish(call: CallbackQuery, state: FSMContext, session: AsyncSession):
+async def adm_reports_by_date_finish(call: CallbackQuery, state: FSMContext, db_user: User, session: AsyncSession):
+    if not _require_admin(db_user): return
     data = call.data.split(":")
     proj_id_raw = data[2]
     
@@ -191,6 +194,11 @@ async def adm_reports_by_date_finish(call: CallbackQuery, state: FSMContext, ses
     if proj_id_raw != "0":
         proj_id = int(proj_id_raw)
         query = query.where(Report.project_id == proj_id)
+    
+    # Manager restriction: only their project if bound
+    role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
+    if role_val == "manager" and db_user.project_id:
+        query = query.where(Report.project_id == db_user.project_id)
         
     res = await session.execute(query.order_by(Report.id.desc()))
     reports = res.scalars().all()
@@ -788,7 +796,7 @@ async def plan_add_project_callback(call: CallbackQuery, state: FSMContext, sess
             await state.update_data(plan_project_id=p.id, plan_project_name=p.name)
             
     await state.set_state(AdminForm.plan_amount)
-    await call.message.edit_text("💰 Введите <b>сумму плана</b> (₽):", parse_mode="HTML")
+    await call.message.edit_text("💰 Введите <b>сумму плана</b> (BYN):", parse_mode="HTML")
     await call.answer()
 
 
@@ -820,7 +828,7 @@ async def plan_add_period(message: Message, state: FSMContext, session: AsyncSes
     proj_str = d.get("plan_project_name") or "Все проекты"
     period_str = "день" if period == "day" else "месяц"
     await message.answer(
-        f"✅ План добавлен: {proj_str} — {d['plan_amount']:.0f}₽ / {period_str}",
+        f"✅ План добавлен: {proj_str} — {d['plan_amount']:.0f}BYN / {period_str}",
         reply_markup=menu_admin()
     )
 
@@ -927,23 +935,53 @@ async def adm_analytics(call: CallbackQuery, db_user: User):
 
 
 @router.callback_query(F.data.startswith("chart_city:"))
-async def analytics_city_select(call: CallbackQuery, db_user: User):
+async def analytics_city_select(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
     city = call.data.split(":")[1]
+    
+    # Fetch projects for this city if not "all"
+    projects = []
+    if city != "all":
+        res = await session.execute(select(Project).where(Project.city == city, Project.is_active == True))
+        projects = res.scalars().all()
+    
+    from bot.keyboards.builders import kb_analytics_options
     city_lbl = {"gomel": "Гомель", "minsk": "Минск", "all": "Все города"}.get(city, city.title())
-    await call.message.edit_text(f"📊 <b>Аналитика и Графики — {city_lbl}</b>\n\nВыберите тип визуализации:",
-                                 parse_mode="HTML", reply_markup=kb_analytics(city))
+    await call.message.edit_text(
+        f"📊 <b>Аналитика — {city_lbl}</b>\n\nВы хотите посмотреть данные по всему городу или по конкретному проекту?",
+        parse_mode="HTML", reply_markup=kb_analytics_options(city, projects)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("chart_options:"))
+async def analytics_options_select(call: CallbackQuery, db_user: User):
+    if not _require_admin(db_user): return
+    parts = call.data.split(":")
+    city, project_name = parts[1], parts[2]
+    if project_name == "none": project_name = None
+    
+    project_lbl = f" — {project_name}" if project_name else ""
+    city_lbl = {"gomel": "Гомель", "minsk": "Минск", "all": "Все города"}.get(city, city.title())
+    
+    await call.message.edit_text(
+        f"📊 <b>Аналитика: {city_lbl}{project_lbl}</b>\n\nВыберите тип визуализации:",
+        parse_mode="HTML", reply_markup=kb_analytics(city, project_name)
+    )
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("chart:revenue:"))
 async def chart_revenue(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
-    city = call.data.split(":")[2]
+    parts = call.data.split(":")
+    city = parts[2]
+    project_name = parts[3] if len(parts) > 3 and parts[3] != "None" else None
+    
     city_val = None if city == "all" else city
     await call.message.edit_text("⏳ Генерирую график выручки…")
     
-    buf = await generate_revenue_chart(session, days=30, city=city_val)
+    buf = await generate_revenue_chart(session, days=30, city=city_val, project_name=project_name)
     if not buf:
         await call.message.edit_text("❌ Нет данных для построения графика.", reply_markup=kb_analytics(city))
         return
@@ -962,46 +1000,50 @@ async def chart_revenue(call: CallbackQuery, session: AsyncSession, db_user: Use
 @router.callback_query(F.data.startswith("chart:revenue_year:"))
 async def chart_revenue_year(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
-    city = call.data.split(":")[2]
+    parts = call.data.split(":")
+    city = parts[2]
+    project_name = parts[3] if len(parts) > 3 and parts[3] != "None" else None
+    
     city_val = None if city == "all" else city
     await call.message.edit_text("⏳ Генерирую годовой график…")
     
-    buf = await generate_yearly_revenue_chart(session, city=city_val)
+    buf = await generate_yearly_revenue_chart(session, city=city_val, project_name=project_name)
     if not buf:
-        await call.message.edit_text("❌ Нет данных для построения годового графика.", reply_markup=kb_analytics(city))
+        await call.message.edit_text("❌ Нет данных.", reply_markup=kb_analytics(city, project_name))
         return
-    
-    city_lbl = f" ({city_val.title()})" if city_val else ""
+
+    desc = f" — {project_name}" if project_name else f" ({city_val.title()})" if city_val else ""
     await call.message.answer_photo(
-        BufferedInputFile(buf.getvalue(), filename="revenue_year.png"),
-        caption=f"📊 <b>Выручка по месяцам за {date.today().year} год{city_lbl}</b>",
+        BufferedInputFile(buf.getvalue(), filename="year.png"),
+        caption=f"📊 <b>Годовая выручка{desc}</b>",
         parse_mode="HTML"
     )
     await call.message.delete()
-    await log_action(session, db_user.id, f"Просмотр годового графика выручки {city}")
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("chart:plans:"))
-async def chart_plans(call: CallbackQuery, session: AsyncSession, db_user: User):
+@router.callback_query(F.data.startswith("chart:plan:"))
+async def chart_plan(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
-    city = call.data.split(":")[2]
+    parts = call.data.split(":")
+    city = parts[2]
+    project_name = parts[3] if len(parts) > 3 and parts[3] != "None" else None
+
     city_val = None if city == "all" else city
-    await call.message.edit_text("⏳ Генерирую график выполнения планов…")
+    await call.message.edit_text("⏳ Анализирую выполнение планов…")
     
-    buf = await generate_plan_performance_chart(session, city=city_val)
+    buf = await generate_plan_performance_chart(session, city=city_val, project_name=project_name)
     if not buf:
-        await call.message.edit_text("❌ Нет данных по планам продаж.", reply_markup=kb_analytics(city))
+        await call.message.edit_text("❌ Нет данных.", reply_markup=kb_analytics(city, project_name))
         return
-    
-    city_lbl = f" ({city_val.title()})" if city_val else ""
+
+    desc = f" — {project_name}" if project_name else f" ({city_val.title()})" if city_val else ""
     await call.message.answer_photo(
-        BufferedInputFile(buf.getvalue(), filename="plans.png"),
-        caption=f"🎯 <b>Выполнение планов продаж{city_lbl}</b>",
+        BufferedInputFile(buf.getvalue(), filename="plan.png"),
+        caption=f"📈 <b>Выполнение планов{desc}</b>",
         parse_mode="HTML"
     )
     await call.message.delete()
-    await log_action(session, db_user.id, f"Просмотр графика планов {city}")
     await call.answer()
 
 
@@ -1254,6 +1296,94 @@ async def mgmt_save(message: Message, state: FSMContext, session: AsyncSession, 
     await message.answer("✅ Управленческий расход сохранён!", reply_markup=kb)
 
 
+# ——— Management Expense List/Delete (Admin Only) ——————————————————————————————
+
+@router.callback_query(F.data == "mgmt:list_start")
+async def adm_mgmt_list_start(call: CallbackQuery, db_user: User, state: FSMContext):
+    if not _require_admin(db_user): return
+    await state.set_state(AdminForm.mgmt_list_date)
+    from bot.keyboards.builders import kb_use_today
+    today_str = date.today().strftime("%d.%m.%Y")
+    await call.message.edit_text(
+        "🔍 <b>Список расходов для удаления</b>\n\nВведите <b>дату</b> (ДД.ММ.ГГГГ):",
+        parse_mode="HTML", reply_markup=kb_use_today(today_str)
+    )
+    await call.answer()
+
+
+@router.callback_query(AdminForm.mgmt_list_date, F.data == "report:use_today")
+@router.message(AdminForm.mgmt_list_date)
+async def adm_mgmt_list_view(event: Message | CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return
+    
+    if isinstance(event, CallbackQuery):
+        d_val = date.today()
+        message = event.message
+    else:
+        try:
+            d_val = _parse_date(event.text)
+            message = event
+        except ValueError:
+            return await event.answer("❌ Неверный формат. Введите ДД.ММ.ГГГГ:")
+
+    res = await session.execute(
+        select(ManagementExpense).where(ManagementExpense.date == d_val).order_by(ManagementExpense.created_at)
+    )
+    expenses = res.scalars().all()
+    
+    if not expenses:
+        from bot.keyboards.builders import kb_back
+        txt = f"📭 За <b>{d_val.strftime('%d.%m.%Y')}</b> расходов не найдено."
+        if isinstance(event, CallbackQuery):
+            await message.edit_text(txt, parse_mode="HTML", reply_markup=kb_back("adm:mgmt_expenses"))
+        else:
+            await message.answer(txt, parse_mode="HTML", reply_markup=kb_back("adm:mgmt_expenses"))
+        return
+
+    from bot.keyboards.builders import kb_mgmt_list
+    txt = f"🔍 <b>Расходы за {d_val.strftime('%d.%m.%Y')}:</b>\n\nНажмите 🗑️ для удаления."
+    if isinstance(event, CallbackQuery):
+        await message.edit_text(txt, parse_mode="HTML", reply_markup=kb_mgmt_list(expenses))
+    else:
+        await message.answer(txt, parse_mode="HTML", reply_markup=kb_mgmt_list(expenses))
+    await state.update_data(mgmt_list_date=d_val.isoformat())
+
+
+@router.callback_query(F.data.startswith("mgmt:del:"))
+async def adm_mgmt_delete(call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
+    if not _require_admin(db_user): return
+    exp_id = int(call.data.split(":")[2])
+    
+    res = await session.execute(select(ManagementExpense).where(ManagementExpense.id == exp_id))
+    exp = res.scalar_one_or_none()
+    
+    if exp:
+        info = f"{exp.category}: {exp.amount} р ({exp.date})"
+        await session.delete(exp)
+        await log_action(session, db_user.id, "Удален управл. расход", info)
+        await session.commit()
+        await call.answer("✅ Удалено", show_alert=True)
+        
+        # Refresh the list
+        data = await state.get_data()
+        d_str = data.get("mgmt_list_date")
+        if d_str:
+            d_val = date.fromisoformat(d_str)
+            res2 = await session.execute(
+                select(ManagementExpense).where(ManagementExpense.date == d_val).order_by(ManagementExpense.created_at)
+            )
+            expenses = res2.scalars().all()
+            if expenses:
+                from bot.keyboards.builders import kb_mgmt_list
+                await call.message.edit_reply_markup(reply_markup=kb_mgmt_list(expenses))
+            else:
+                from bot.keyboards.builders import kb_back
+                await call.message.edit_text(f"📭 Расходов за {d_val.strftime('%d.%m.%Y')} больше нет.", 
+                                            reply_markup=kb_back("adm:mgmt_expenses"))
+    else:
+        await call.answer("Ошибка: расход не найден")
+
+
 # ——— Manager Panel ———————————————————————————————————————————————————————————
 
 @router.message(F.text == "⚙️ Панель управляющего")
@@ -1278,15 +1408,7 @@ async def mgr_panel_callback(call: CallbackQuery, db_user: User):
     )
     await call.answer()
 
-def _kb_manager_main() -> InlineKeyboardMarkup:
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    b = InlineKeyboardBuilder()
-    b.button(text="📊 Отчёты",           callback_data="adm:reports")
-    b.button(text="📋 Проверка отчётов", callback_data="review:list:0")
-    b.button(text="📈 Моя ЗП",            callback_data="mgr:my_salary")
-    b.button(text="📂 Управл. расходы",    callback_data="mgr:mgmt_start")
-    b.adjust(1)
-    return b.as_markup()
+# Keyboard is now defined at the top as _kb_manager_main
 
 
 # ——— Manager Mgmt Expenses (Separate Flow) ———————————————————————————————————
@@ -1295,7 +1417,12 @@ def _kb_manager_main() -> InlineKeyboardMarkup:
 async def mgr_mgmt_start(call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
     if not db_user.role.value == "manager": return
     if not db_user.project_id:
-        return await call.answer("❌ Вы не привязаны к проекту.", show_alert=True)
+        from bot.keyboards.builders import kb_back
+        await call.message.edit_text(
+            "⚠️ Вы не привязаны к конкретному проекту. Пожалуйста, обратитесь к администратору для назначения проекта.",
+            reply_markup=kb_back("mgr:panel")
+        )
+        await call.answer(); return
     
     await state.clear()
     res = await session.execute(select(Project).where(Project.id == db_user.project_id))
@@ -1388,7 +1515,8 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
     # Manager must be bound to a project to see reports
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
     if role_val == "manager" and not db_user.project_id:
-        txt = "⚠️ За вами не закреплен проект. Проверка отчетов недоступна."
+        from bot.keyboards.builders import kb_back
+        txt = "⚠️ Вы не привязаны к конкретному проекту. Пожалуйста, обратитесь к администратору для назначения проекта."
         if call:
             await call.message.edit_text(txt, reply_markup=kb_back("mgr:panel"))
             await call.answer()
@@ -1429,7 +1557,7 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
     for r in page_reports:
         date_str = r.date.strftime("%d.%m")
         proj_short = (r.project_name[:10] + "..") if len(r.project_name) > 12 else r.project_name
-        btn_text = f"⏳ {date_str} | {proj_short} | {r.revenue:,.0f} ₽"
+        btn_text = f"⏳ {date_str} | {proj_short} | {r.revenue:,.0f} BYN"
         b.button(text=btn_text, callback_data=f"review:view:{r.id}")
     
     b.adjust(1)
@@ -1477,16 +1605,16 @@ async def review_view(call: CallbackQuery, session: AsyncSession, db_user: User)
         f"🎭 Проект:            <b>{r.project_name}</b>\n"
         f"👤 Сотрудник:         <b>{r.employee_name}</b>\n"
         f"👥 Чел. в смене:      <b>{r.shift_count}</b>\n\n"
-        f"💰 Выручка:           <b>{r.revenue:,.0f} ₽</b>\n"
-        f"💵 Наличные:          <b>{r.cash:,.0f} ₽</b>\n"
-        f"💳 Эквайринг:         <b>{r.acquiring:,.0f} ₽</b>\n"
-        f"📉 Хоз расход:        <b>{r.expense:,.0f} ₽</b>\n"
-        f"🎓 ЗП стажёра:       <b>{r.trainee_salary:,.0f} ₽</b>\n"
-        f"🏦 Остаток в кассе:   <b>{r.cash_balance:,.0f} ₽</b>\n"
+        f"💰 Выручка:           <b>{r.revenue:,.0f} BYN</b>\n"
+        f"💵 Наличные:          <b>{r.cash:,.0f} BYN</b>\n"
+        f"💳 Эквайринг:         <b>{r.acquiring:,.0f} BYN</b>\n"
+        f"📉 Хоз расход:        <b>{r.expense:,.0f} BYN</b>\n"
+        f"🎓 ЗП стажёра:       <b>{r.trainee_salary:,.0f} BYN</b>\n"
+        f"🏦 Остаток в кассе:   <b>{r.cash_balance:,.0f} BYN</b>\n"
         f"👣 Посетители:        <b>{r.visitors}</b>\n"
         f"🎂 Дней рождений:     <b>{r.birthdays}</b>\n"
         f"💬 Комментарий:       <b>{r.comment or '—'}</b>\n\n"
-        f"Фактическая ЗП смены: {_fmt(r.salary_paid)} ₽\n"
+        f"Фактическая ЗП смены: {_fmt(r.salary_paid)} BYN\n"
     )
 
     is_admin = db_user.role == UserRole.admin
@@ -1526,13 +1654,21 @@ async def review_edit(call: CallbackQuery, state: FSMContext, session: AsyncSess
 
     await state.clear()
     # Load all data into state
+    emp_name = r.employee_name
+    partners = None
+    if " + " in emp_name:
+        parts = emp_name.split(" + ", 1)
+        emp_name = parts[0]
+        partners = parts[1]
+
     await state.update_data(
         admin_editing_report_id=r.id,
         date=r.date.isoformat(),
         project=r.project_name,
         project_id=r.project_id,
         city=r.city,
-        employee_name=r.employee_name,
+        employee_name=emp_name,
+        partners=partners,
         shift_count=r.shift_count,
         revenue=r.revenue,
         cash=r.cash,
@@ -1612,13 +1748,13 @@ async def mgr_my_salary(call: CallbackQuery, session: AsyncSession, db_user: Use
 
         salary, desc = calculate_manager_salary(float(actual), plan.plan_amount)
         total_salary += salary
-        lines.append(f"🎯 <b>План ({city_lbl} | {project_name}):</b> {_fmt(plan.plan_amount)} ₽")
-        lines.append(f"💰 Факт: {_fmt(actual)} ₽")
+        lines.append(f"🎯 <b>План ({city_lbl} | {project_name}):</b> {_fmt(plan.plan_amount)} BYN")
+        lines.append(f"💰 Факт: {_fmt(actual)} BYN")
         lines.append(f"📊 {desc}")
-        lines.append(f"💵 <b>К выплате: {_fmt(salary)}</b> ₽\n")
+        lines.append(f"💵 <b>К выплате: {_fmt(salary)}</b> BYN\n")
 
     lines.append(f"────────────────")
-    lines.append(f"🏆 <b>Итого ваша ЗП: {_fmt(total_salary)} ₽</b>")
+    lines.append(f"🏆 <b>Итого ваша ЗП: {_fmt(total_salary)} BYN</b>")
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()

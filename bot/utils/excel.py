@@ -47,8 +47,8 @@ _BORDER_RIGHT_THICK = Border(left=_thin,  right=_thick, top=_thin, bottom=_thin)
 _BORDER_TOP_MED     = Border(left=_thin,  right=_thin,  top=_med,  bottom=_thin)
 _BORDER_BOT_MED     = Border(left=_thin,  right=_thin,  top=_thin,  bottom=_med)
 
-_NUM_FMT = '#,##0.00 "₽"'
-_INT_FMT = '#,##0 "₽"'
+_NUM_FMT = '#,##0.00 "BYN"'
+_INT_FMT = '#,##0 "BYN"'
 _PCT_FMT = '0%'
 
 
@@ -125,14 +125,13 @@ async def generate_monthly_calendar(
     cities_to_process = ["gomel", "minsk"] if city == "all" else [city]
 
     wb = Workbook()
-    wb.remove(wb.active)
-
     headers = [
         "Доходы", "нал.", "безнал.", "Расходы",
         "зарплата\nфотографа", "зарплата\nстажера", "хоз расход", 
         "расходник", "УСН 6%", "налоги по\nЗП 35,6%", "техника", "аренда", 
-        "Остаток конец дня", "из них нал."
+        "Остаток конец дня"
     ]
+    wb.remove(wb.active)
 
     def build_city_sheet(sheet_city: str, reports: list[Report], plans: list[Plan], mgmt_list: list[ManagementExpense]):
         city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(sheet_city, sheet_city.title())
@@ -142,7 +141,7 @@ async def generate_monthly_calendar(
         ws.column_dimensions["B"].width = 16
         ws.column_dimensions["C"].width = 8
         ws.column_dimensions["D"].width = 18
-        for i in range(14):
+        for i in range(len(headers)):
             ws.column_dimensions[get_column_letter(5 + i)].width = 15
 
         row = 1
@@ -188,8 +187,8 @@ async def generate_monthly_calendar(
                 day_acq = float(master.acquiring) if master else 0.0
                 day_exp = float(master.expense) if master else 0.0
                 
-                day_sal_total = sum(float(r.salary_paid) for r in reps)
-                day_tra_total = sum(float(r.trainee_salary) for r in reps)
+                day_sal_total = sum(float(r.salary_paid) * r.shift_count for r in reps)
+                day_tra_total = sum(float(r.trainee_salary) for r in reps)  # trainee salary is usually flat
                 
                 day_auto_usn = day_rev * 0.06
                 day_auto_tax_zp = (day_sal_total + day_tra_total) * 0.356
@@ -248,7 +247,7 @@ async def generate_monthly_calendar(
             _merge(ws, row, 1, row, 2, p_name, fill=_FILL_PROJECT, font=_F_BOLD, align=_CTR)
             _cell(ws, row, 3, "", fill=_FILL_PROJECT)
             _cell(ws, row, 4, "", fill=_FILL_PROJECT)
-            for i in range(14):
+            for i in range(len(headers)):
                 if headers[i] in ["зарплата\nфотографа", "зарплата\nстажера"]:
                     _cell(ws, row, 5 + i, "в нал", fill=_FILL_PROJECT, align=_CTR, font=_F_RED)
                 else:
@@ -270,7 +269,7 @@ async def generate_monthly_calendar(
                 else:
                     c.font = _F_BLUE
             # Medium bottom border under the header row
-            _apply_border(ws, row, 1, row, 18, "medium")
+            _apply_border(ws, row, 1, row, 4 + len(headers), "medium")
             row += 1
 
             # Row 3: Total ("Общая")
@@ -309,9 +308,8 @@ async def generate_monthly_calendar(
             _cell(ws, row, 15, p_tech, fill=_FILL_BLUE_IN, fmt=_NUM_FMT)
             _cell(ws, row, 16, p_rent, fill=_FILL_BLUE_IN, fmt=_NUM_FMT)
             _cell(ws, row, 17, total_rev - grand_total_exp, fill=_FILL_BLUE_IN, fmt=_NUM_FMT)
-            _cell(ws, row, 18, total_cash - total_exp - total_tra, fill=_FILL_BLUE_IN, fmt=_NUM_FMT)
             # Medium bottom of totals row
-            _apply_border(ws, row, 1, row, 18, "medium")
+            _apply_border(ws, row, 1, row, 4 + len(headers), "medium")
             row += 1
 
             days_start_row = row  # Start of daily rows
@@ -320,7 +318,22 @@ async def generate_monthly_calendar(
             for d in range(1, days_in_month + 1):
                 day_data = agg[d]
                 reps = day_data["reps"]
-                n_rows = max(1, len(reps))
+                
+                # Calculate total visual rows needed (splitting shared reports)
+                visual_rows = []
+                import re
+                for r in reps:
+                    # Split by " + ", "," or ";"
+                    names = re.split(r" \+ |,|;", r.employee_name or "Unknown")
+                    names = [n.strip() for n in names if n.strip()]
+                    for name in names:
+                        visual_rows.append({
+                            "name": name,
+                            "sal": float(r.salary_paid),
+                            "trainee": float(r.trainee_salary) if names.index(name) == 0 else 0.0 # Trainee salary only on first row
+                        })
+                
+                n_rows = max(1, len(visual_rows))
                 start_r = row
                 end_r = row + n_rows - 1
 
@@ -340,17 +353,17 @@ async def generate_monthly_calendar(
                 _merge(ws, start_r, 7, end_r, 7, _num(day_data["acq"]), fill=row_fill, fmt=_NUM_FMT, align=_CTR)
                 _merge(ws, start_r, 8, end_r, 8, _num(day_data["total_exp"]), fill=_FILL_GREEN, fmt=_NUM_FMT, align=_CTR)
                 
-                if not reps:
+                if not visual_rows:
                     _cell(ws, start_r, 4, "", fill=row_fill)
                     _cell(ws, start_r, 9, "", fill=row_fill, fmt=_NUM_FMT)
                     _cell(ws, start_r, 10, "", fill=row_fill, fmt=_NUM_FMT)
                 else:
-                    for i, r in enumerate(reps):
+                    for i, vrow in enumerate(visual_rows):
                         cur_r = start_r + i
-                        fname = r.employee_name.split()[0] if r.employee_name else "Unknown"
+                        fname = vrow["name"].split()[0] if vrow["name"] else "Unknown"
                         _cell(ws, cur_r, 4, fname, fill=row_fill, align=_CTR)
-                        _cell(ws, cur_r, 9, _num(float(r.salary_paid)), fill=row_fill, fmt=_NUM_FMT)
-                        _cell(ws, cur_r, 10, _num(float(r.trainee_salary)), fill=row_fill, fmt=_NUM_FMT)
+                        _cell(ws, cur_r, 9, _num(vrow["sal"]), fill=row_fill, fmt=_NUM_FMT)
+                        _cell(ws, cur_r, 10, _num(vrow["trainee"]), fill=row_fill, fmt=_NUM_FMT)
                 
                 _merge(ws, start_r, 11, end_r, 11, _num(day_data["exp"]), fill=row_fill, fmt=_NUM_FMT, align=_CTR)
                 _merge(ws, start_r, 12, end_r, 12, _num(day_data["cons"]), fill=row_fill, fmt=_NUM_FMT, align=_CTR)
@@ -359,21 +372,20 @@ async def generate_monthly_calendar(
                 _merge(ws, start_r, 15, end_r, 15, _num(day_data["tech"]), fill=row_fill, fmt=_NUM_FMT, align=_CTR)
                 _merge(ws, start_r, 16, end_r, 16, _num(day_data["rent"]), fill=row_fill, fmt=_NUM_FMT, align=_CTR)
                 _merge(ws, start_r, 17, end_r, 17, _num(day_data["ostatok"]), fill=_FILL_GREEN, fmt=_NUM_FMT, align=_CTR)
-                _merge(ws, start_r, 18, end_r, 18, _num(day_data["incass"]), fill=_FILL_GREEN, fmt=_NUM_FMT, align=_CTR)
                 
                 row = end_r + 1
             
             # Apply thick outer border around the FULL project block (title + header + total + days)
-            _apply_border(ws, proj_start_row, 1, row - 1, 18, "thick")
+            _apply_border(ws, proj_start_row, 1, row - 1, 4 + len(headers), "thick")
             # Medium separators at key horizontal boundaries within the block
-            _apply_border(ws, proj_start_row, 1, proj_start_row, 18, "medium")  # title bottom
-            _apply_border(ws, days_start_row - 1, 1, days_start_row - 1, 18, "medium")  # below total
+            _apply_border(ws, proj_start_row, 1, proj_start_row, 4 + len(headers), "medium")  # title bottom
+            _apply_border(ws, days_start_row - 1, 1, days_start_row - 1, 4 + len(headers), "medium")  # below total
             
             row += 2  # gap between projects
 
         if len(projects_sorted) > 0:
             row += 1  # Add a tiny gap before total
-            _merge(ws, row, 1, row, 18, f"ИТОГО ПО ВСЕМ ПРОЕКТАМ — {city_label}", fill=_FILL_RED_HDR, font=_F_WHITE, align=_CTR)
+            _merge(ws, row, 1, row, 4 + len(headers), f"ИТОГО ПО ВСЕМ ПРОЕКТАМ — {city_label}", fill=_FILL_RED_HDR, font=_F_WHITE, align=_CTR)
             row += 1
             
             start_row = row
@@ -401,8 +413,7 @@ async def generate_monthly_calendar(
                 ("техника", c_tech, None),
                 ("аренда", c_rent, None),
                 ("другое", 0.0, None), 
-                ("Остаток конец дня", c_rev - c_grand_exp, _FILL_GREEN),
-                ("из них нал.", c_cash - c_exp - c_tra, _FILL_GREEN),
+                ("Остаток конец дня", c_rev - c_grand_exp, _FILL_GREEN)
             ]
             
             for i, (name, val, fill) in enumerate(metrics):
@@ -412,8 +423,6 @@ async def generate_monthly_calendar(
             totals_end_row = start_row + len(metrics) - 1
             # Thick outer border around the full city totals block
             _apply_border(ws, start_row - 1, 1, totals_end_row, 4, "thick")
-            # Freeze panes: keep first 3 rows and 4 columns visible on scroll
-            ws.freeze_panes = "E4"
             
             row = totals_end_row + 2
 
@@ -497,7 +506,6 @@ async def generate_excel_report(session: AsyncSession, start_date: date, end_dat
         c = ws2.cell(row=tr, column=ci, value=v)
         c.font, c.fill, c.alignment, c.border = TOT_F, TOT_FL, CENTER, BORDER
 
-    ws2.freeze_panes = "A2"
     buf = io.BytesIO()
     wb2.save(buf)
     buf.seek(0)
