@@ -1537,6 +1537,7 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
 
     target = message or call.message
     if not reports:
+        from bot.keyboards.builders import kb_back
         txt = "✅ Все доступные отчеты проверены!"
         if call:
             await call.message.edit_text(txt, reply_markup=kb_back())

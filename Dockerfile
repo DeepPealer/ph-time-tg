@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM cr.yandex/mirror/python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
