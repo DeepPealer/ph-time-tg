@@ -33,6 +33,10 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)  # user-entered name
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    @property
+    def pretty_name(self) -> str:
+        return self.display_name or self.full_name
+
     reports: Mapped[list["Report"]] = relationship("Report", foreign_keys="[Report.user_id]", back_populates="user")
     project: Mapped[Optional["Project"]] = relationship()
 

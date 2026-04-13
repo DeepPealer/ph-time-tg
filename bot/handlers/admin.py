@@ -249,7 +249,7 @@ async def adm_employees_city(call: CallbackQuery, session: AsyncSession, db_user
         query = query.where(User.city == city)
         city_label = "🏙️ ГОМЕЛЬ" if city == "gomel" else "🌆 МИНСК"
         
-    res = await session.execute(query.order_by(User.full_name))
+    res = await session.execute(query.order_by(User.display_name, User.full_name))
     employees = res.scalars().all()
     
     await call.message.edit_text(
@@ -275,7 +275,7 @@ async def emp_view(call: CallbackQuery, session: AsyncSession):
         if p: proj_str = f"📌 {p.name}"
 
     text = (
-        f"👤 <b>{emp.full_name}</b>\n"
+        f"👤 <b>{emp.pretty_name}</b>\n"
         f"📎 @{emp.username or '—'}\n"
         f"🆔 {emp.telegram_id}\n"
         f"🎭 Роль: {role_str}\n"
@@ -332,7 +332,7 @@ async def emp_add_id(message: Message, state: FSMContext, session: AsyncSession)
         user.role = UserRole.employee
         user.is_active = True
         await session.commit()
-        await message.answer(f"✅ {user.full_name} теперь сотрудник!", reply_markup=menu_admin())
+        await message.answer(f"✅ {user.pretty_name} теперь сотрудник!", reply_markup=menu_admin())
     else:
         # Pre-create record; will be enriched on first /start
         new = User(telegram_id=tg_id, full_name=f"User_{tg_id}",
@@ -354,7 +354,7 @@ async def emp_mkadmin(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.admin; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} назначен администратором.",
+        await call.message.edit_text(f"✅ {emp.pretty_name} назначен администратором.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -367,7 +367,7 @@ async def emp_mkmgr(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.manager; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} назначен управляющим.",
+        await call.message.edit_text(f"✅ {emp.pretty_name} назначен управляющим.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -380,7 +380,7 @@ async def emp_mkemp(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.employee; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} снят с должности управляющего (теперь сотрудник).",
+        await call.message.edit_text(f"✅ {emp.pretty_name} снят с должности управляющего (теперь сотрудник).",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -393,7 +393,7 @@ async def emp_rmadmin(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.employee
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} теперь сотрудник.",
+        await call.message.edit_text(f"✅ {emp.pretty_name} теперь сотрудник.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -407,7 +407,7 @@ async def emp_delete(call: CallbackQuery, session: AsyncSession):
         emp.is_active = False
         emp.role = UserRole.pending
         await session.commit()
-        await call.message.edit_text(f"🗑️ {emp.full_name} лишён доступа.",
+        await call.message.edit_text(f"🗑️ {emp.pretty_name} лишён доступа.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Удалён")
 
@@ -426,7 +426,7 @@ async def adm_pending(call: CallbackQuery, session: AsyncSession, db_user: User)
         await call.answer(); return
     text = f"📥 <b>Заявки ({len(pending)})</b>\n\n"
     for u in pending:
-        text += f"• {u.full_name} (@{u.username or '—'}) — <code>{u.telegram_id}</code>\n"
+        text += f"• {u.pretty_name} (@{u.username or '—'}) — <code>{u.telegram_id}</code>\n"
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_back())
     await call.answer()
 
@@ -439,7 +439,7 @@ async def pending_approve_employee(call: CallbackQuery, session: AsyncSession, b
     if u:
         u.role = UserRole.employee; u.is_active = True
         await session.commit()
-        name = u.display_name or u.full_name
+        name = u.pretty_name
         await call.message.edit_reply_markup()
         await call.message.answer(f"✅ {name} одобрен как Сотрудник.")
         try:
@@ -456,7 +456,7 @@ async def pending_approve_manager(call: CallbackQuery, session: AsyncSession, bo
     if u:
         u.role = UserRole.manager; u.is_active = True
         await session.commit()
-        name = u.display_name or u.full_name
+        name = u.pretty_name
         await call.message.edit_reply_markup()
         await call.message.answer(f"✅ {name} одобрен как Управляющий.")
         try:
@@ -473,7 +473,7 @@ async def pending_deny(call: CallbackQuery, session: AsyncSession, bot: Bot):
     if u:
         await session.delete(u); await session.commit()
         await call.message.edit_reply_markup()
-        await call.message.answer(f"🗑️ Заявка от {u.full_name} отклонена.")
+        await call.message.answer(f"🗑️ Заявка от {u.pretty_name} отклонена.")
         try:
             await bot.send_message(tg_id, "❌ Ваш запрос на доступ отклонён.")
         except Exception: pass
@@ -508,7 +508,7 @@ async def emp_city_set(call: CallbackQuery, session: AsyncSession, db_user: User
         await session.commit()
         city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(city or "", "спрашивать")
         await call.message.edit_text(
-            f"✅ Город сотрудника <b>{emp.full_name}</b> установлен: <b>{city_label}</b>",
+            f"✅ Город сотрудника <b>{emp.pretty_name}</b> установлен: <b>{city_label}</b>",
             parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
         )
     await call.answer("Сохранено")
@@ -553,7 +553,7 @@ async def emp_saveproj(call: CallbackQuery, session: AsyncSession, db_user: User
             proj_name = p.name if p else "???"
             
         await call.message.edit_text(
-            f"✅ Управляющий <b>{emp.full_name}</b> привязан к проекту: <b>{proj_name}</b>",
+            f"✅ Управляющий <b>{emp.pretty_name}</b> привязан к проекту: <b>{proj_name}</b>",
             parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
         )
     await call.answer("Привязано")
@@ -1954,7 +1954,7 @@ async def debug_set_proj(message: Message, session: AsyncSession, db_user: User)
     target_user.project_id = proj_id if proj_id != 0 else None
     await session.commit()
     proj_name = proj.name if proj_id != 0 else "None"
-    await message.answer(f"✅ User {target_user.full_name} ({target_id}) bound to project: <b>{proj_name}</b> (ID: {proj_id})", parse_mode="HTML")
+    await message.answer(f"✅ User {target_user.pretty_name} ({target_id}) bound to project: <b>{proj_name}</b> (ID: {proj_id})", parse_mode="HTML")
 
 @router.message(Command("projects"))
 async def debug_list_projects(message: Message, session: AsyncSession, db_user: User):

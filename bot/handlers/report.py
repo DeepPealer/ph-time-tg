@@ -107,7 +107,7 @@ async def use_today(call: CallbackQuery, state: FSMContext, db_user: User, sessi
                 await state.update_data(project=proj.name, project_id=proj.id)
                 await call.message.edit_text(f"✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
                 
-                name_to_use = db_user.display_name or db_user.full_name
+                name_to_use = db_user.pretty_name
                 if db_user.role == UserRole.employee:
                     await state.update_data(employee_name=name_to_use)
                     return await _finalize_step(call.message, state, db_user, session,
@@ -160,7 +160,7 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
                 await state.update_data(project=proj.name, project_id=proj.id)
                 await message.answer(f"{msg_prefix}✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
                 
-                name_to_use = db_user.display_name or db_user.full_name
+                name_to_use = db_user.pretty_name
                 if db_user.role == UserRole.employee:
                     await state.update_data(employee_name=name_to_use)
                     return await _finalize_step(message, state, db_user, session,
@@ -214,7 +214,7 @@ async def process_project_callback(call: CallbackQuery, state: FSMContext, db_us
     await state.update_data(project=p.name, project_id=p.id)
     await call.message.edit_text(f"✅ Проект: <b>{p.name}</b>", parse_mode="HTML")
     
-    name_to_use = db_user.display_name or db_user.full_name
+    name_to_use = db_user.pretty_name
     
     # Auto-fill for employees
     if db_user.role == UserRole.employee:
@@ -232,7 +232,7 @@ async def process_project_callback(call: CallbackQuery, state: FSMContext, db_us
 
 @router.message(F.text == "/use_name", ReportForm.employee_name)
 async def use_suggested_name(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
-    name_to_use = db_user.display_name or db_user.full_name
+    name_to_use = db_user.pretty_name
     await state.update_data(employee_name=name_to_use)
     await _finalize_step(message, state, db_user, session,
         "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
@@ -772,7 +772,7 @@ def _build_admin_notification(d: dict, db_user: User, plan_line: str | None = No
     plan_block = f"\n{plan_line}\n" if plan_line else ""
     return (
         f"📋 <b>Новый отчёт!</b>\n\n"
-        f"👤 От: {db_user.full_name}\n"
+        f"👤 От: {db_user.pretty_name}\n"
         f"📅 Дата:           {report_date}\n"
         f"🎭 Проект:         {d['project']}\n"
         f"👥 Чел. в смене:   {d['shift_count']}\n\n"

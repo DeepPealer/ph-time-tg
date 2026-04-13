@@ -50,7 +50,7 @@ async def cmd_start(message: Message, db_user: User, is_new_user: bool, bot: Bot
         )
         return
 
-    name = db_user.display_name or db_user.full_name.split()[0]
+    name = db_user.pretty_name.split()[0]
     role_labels = {
         "admin": "Администратор",
         "manager": "Управляющий",

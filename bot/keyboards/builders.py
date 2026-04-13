@@ -279,9 +279,9 @@ def kb_employee_list(employees: list, city_label: str) -> InlineKeyboardMarkup:
     
     b.button(text=f"─── {city_label} ───", callback_data="none")
     
-    for emp in sorted(employees, key=lambda x: x.full_name):
+    for emp in sorted(employees, key=lambda x: x.pretty_name):
         icon = "👑" if emp.role.value == "admin" else "👤"
-        name = emp.full_name or emp.username or str(emp.telegram_id)
+        name = emp.pretty_name
         b.button(text=f"{icon} {name}", callback_data=f"emp:view:{emp.telegram_id}")
             
     b.button(text="⬅️ Назад к городам", callback_data="adm:employees")

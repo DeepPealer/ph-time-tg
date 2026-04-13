@@ -18,7 +18,7 @@ async def show_cabinet(message: Message, db_user: User):
         return
 
     await message.answer(
-        f"👤 <b>Личный кабинет: {db_user.full_name}</b>\n\n"
+        f"👤 <b>Личный кабинет: {db_user.pretty_name}</b>\n\n"
         "Здесь вы можете посмотреть свою статистику и историю выплат.",
         parse_mode="HTML",
         reply_markup=kb_cabinet_main()
