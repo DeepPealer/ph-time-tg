@@ -2,7 +2,7 @@
 from typing import Optional
 from enum import Enum as PyEnum
 from sqlalchemy import (
-    String, Integer, Float, Boolean, Date, DateTime,
+    String, Integer, BigInteger, Float, Boolean, Date, DateTime,
     Text, Enum, ForeignKey, func
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -23,7 +23,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     username: Mapped[str | None] = mapped_column(String(100), nullable=True)
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.pending)

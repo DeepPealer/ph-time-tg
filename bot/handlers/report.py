@@ -595,6 +595,25 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
                     await bot.send_message(adm.telegram_id, fwd, parse_mode="HTML")
                 except Exception:
                     pass
+
+    # Forward to shared city chat (in the correct topic thread per city)
+    if config.city_chat_id:
+        report_city = d.get("city", "")
+        thread_id = None
+        if report_city == "gomel":
+            thread_id = config.city_thread_gomel
+        elif report_city == "minsk":
+            thread_id = config.city_thread_minsk
+        try:
+            await bot.send_message(
+                config.city_chat_id,
+                fwd,
+                parse_mode="HTML",
+                message_thread_id=thread_id,
+            )
+        except Exception:
+            pass
+
     await call.answer()
 
 
