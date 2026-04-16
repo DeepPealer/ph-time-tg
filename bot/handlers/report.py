@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime
+from datetime import date, datetime
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -240,7 +240,15 @@ async def use_suggested_name(message: Message, state: FSMContext, db_user: User,
 
 @router.message(ReportForm.employee_name)
 async def process_employee_name(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
-    await state.update_data(employee_name=message.text.strip())
+    name = message.text.strip()
+    if len(name) < 2 or name.isdigit():
+        await message.answer(
+            "❌ Введите корректную <b>фамилию</b> сотрудника (минимум 2 символа, не число).\n"
+            f"Или нажмите /use_name чтобы использовать <b>{db_user.pretty_name}</b>.",
+            parse_mode="HTML"
+        )
+        return
+    await state.update_data(employee_name=name)
     await _finalize_step(message, state, db_user, session,
         "Шаг 5/13 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
 
@@ -726,7 +734,7 @@ async def _finalize_step(message: Message, state: FSMContext, db_user: User, ses
 
 
 @router.callback_query(F.data == "report:back")
-async def back_report(call: CallbackQuery, state: FSMContext):
+async def back_report(call: CallbackQuery, state: FSMContext, db_user: User):
     data = await state.get_data()
     if data.get("admin_editing_report_id"):
         # When editing, Back from ANYWHERE (including confirm) goes to edit fields menu
@@ -789,9 +797,18 @@ async def back_report(call: CallbackQuery, state: FSMContext):
 def _build_admin_notification(d: dict, db_user: User, plan_line: str | None = None) -> str:
     report_date = datetime.fromisoformat(d["date"]).strftime("%d.%m.%Y")
     plan_block = f"\n{plan_line}\n" if plan_line else ""
+    # Build employee display: show partners if joint shift
+    employee_display = d.get("employee_name", "—")
+    if d.get("partners"):
+        employee_display += f" + {d['partners']}"
+    # Show submitter separately only if they differ from the employee
+    submitter_line = ""
+    if db_user.pretty_name.lower() not in employee_display.lower():
+        submitter_line = f"📨 Сдал:           {db_user.pretty_name}\n"
     return (
         f"📋 <b>Новый отчёт!</b>\n\n"
-        f"👤 От: {db_user.pretty_name}\n"
+        f"👤 Сотрудник:      {employee_display}\n"
+        f"{submitter_line}"
         f"📅 Дата:           {report_date}\n"
         f"🎭 Проект:         {d['project']}\n"
         f"👥 Чел. в смене:   {d['shift_count']}\n\n"

