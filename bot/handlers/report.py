@@ -575,11 +575,8 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
         await call.answer()
         return
 
-    total_salary = d['salary'] * d['shift_count']
     await call.message.answer(
-        f"✅ Отчёт принят!{plan_part}\n\n"
-        f"💸 <b>Возьмите из кассы (на всех): {_fmt(total_salary)} BYN</b>\n"
-        f"<i>(По {_fmt(d['salary'])} на человека)</i>",
+        f"✅ Отчет принят!{plan_part}\n\n",
         parse_mode="HTML",
         reply_markup=_menu(db_user.role.value)
     )

@@ -6,8 +6,11 @@ Photographer Gomel:
   Saturday: <=400 → 25 + 10%; 400-800 → 20%; >800 → 22%
   Sunday:   <=350 → 25 + 10%; 350-600 → 20%; >600 → 22%
 
-Photographer Minsk (all days):
+Photographer Minsk (full day):
   <=450 → 45 + 10%; 450-1000 → 20%; >1000 → 22%
+
+Photographer Minsk (half day):
+  <=450 → 22.5 + 10%; 450-1000 → 20%; >1000 → 22%
 
 Percentage part is divided equally among shift_count.
 
@@ -39,8 +42,13 @@ _GOMEL_SUNDAY = [  # weekday 6
     (350, 600,   0.0, 0.20),
     (600, None,  0.0, 0.22),
 ]
-_MINSK_ALL = [  # all days
+_MINSK_ALL = [  # all days, full shift
     (0,    450,  45.0, 0.10),
+    (450, 1000,   0.0, 0.20),
+    (1000, None,  0.0, 0.22),
+]
+_MINSK_HALF = [  # all days, half shift (base 22.5 instead of 45)
+    (0,    450,  22.5, 0.10),
     (450, 1000,   0.0, 0.20),
     (1000, None,  0.0, 0.22),
 ]
