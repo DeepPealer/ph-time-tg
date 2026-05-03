@@ -1,4 +1,4 @@
-﻿from dataclasses import dataclass, field
+from dataclasses import dataclass, field
 from os import getenv
 from dotenv import load_dotenv
 
@@ -14,6 +14,7 @@ class Config:
     city_thread_minsk: int | None   # message_thread_id for Minsk topic
     admin_ids: list[int]
     database_url: str
+    proxy_url: str | None           # Optional HTTP/SOCKS5 proxy for Telegram API
 
 
 def load_config() -> Config:
@@ -38,6 +39,7 @@ def load_config() -> Config:
         city_thread_minsk=_parse_thread("CITY_THREAD_MINSK"),
         admin_ids=admin_ids,
         database_url=getenv("DATABASE_URL", "sqlite+aiosqlite:///data/bot.db"),
+        proxy_url=getenv("PROXY_URL", None) or None,
     )
 
 

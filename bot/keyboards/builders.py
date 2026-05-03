@@ -1,4 +1,4 @@
-﻿from aiogram.types import (
+from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton
 )
@@ -280,7 +280,12 @@ def kb_employee_list(employees: list, city_label: str) -> InlineKeyboardMarkup:
     b.button(text=f"─── {city_label} ───", callback_data="none")
     
     for emp in sorted(employees, key=lambda x: x.pretty_name):
-        icon = "👑" if emp.role.value == "admin" else "👤"
+        if emp.role.value == "admin":
+            icon = "👑"
+        elif emp.role.value == "manager":
+            icon = "💼"
+        else:
+            icon = "👤"
         name = emp.pretty_name
         b.button(text=f"{icon} {name}", callback_data=f"emp:view:{emp.telegram_id}")
             
@@ -301,10 +306,8 @@ def kb_employee_actions(tg_id: int, role: str, city: str | None = None) -> Inlin
         b.button(text="👤 Снять права",       callback_data=f"emp:rmadmin:{tg_id}")
     city_label = {"gomel": "🏙️ Гомель", "minsk": "🌆 Минск"}.get(city or "", "❓ не задан")
     b.button(text=f"🏙️ Город: {city_label}",  callback_data=f"emp:setcity:{tg_id}")
+    b.button(text="📌 Привязать проект", callback_data=f"emp:setproj:{tg_id}")
     
-    if role == "manager":
-        b.button(text="📌 Привязать проект",   callback_data=f"emp:bindproj:{tg_id}")
-
     b.button(text="📋 Архив отчётов",         callback_data=f"emp:archive:{tg_id}")
     b.button(text="🗑️ Удалить",               callback_data=f"emp:delete:{tg_id}")
     b.button(text="📅 Поиск по дате", callback_data="adm:reports_by_date")
@@ -456,6 +459,16 @@ def kb_projects_for_plan(projects: list) -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
+def kb_projects_for_user_binding(projects: list, tg_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="🔓 НЕТ ПРИВЯЗКИ", callback_data=f"emp:proj:0:{tg_id}")
+    for p in sorted(projects, key=lambda x: x.name):
+        b.button(text=p.name, callback_data=f"emp:proj:{p.id}:{tg_id}")
+    b.button(text="⬅️ Назад", callback_data=f"emp:view:{tg_id}")
+    b.adjust(1)
+    return b.as_markup()
+
+
 def kb_projects_for_report(projects: list) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     for p in sorted(projects, key=lambda x: x.name):
@@ -500,15 +513,6 @@ def kb_back(cb: str = "adm:back") -> InlineKeyboardMarkup:
     b.button(text="⬅️ Назад", callback_data=cb)
     return b.as_markup()
 
-
-def kb_projects_for_user_binding(projects: list, tg_id: int) -> InlineKeyboardMarkup:
-    b = InlineKeyboardBuilder()
-    b.button(text="🔓 НЕТ ПРИВЯЗКИ (Все проекты)", callback_data=f"emp:saveproj:0:{tg_id}")
-    for p in sorted(projects, key=lambda x: x.name):
-        b.button(text=p.name, callback_data=f"emp:saveproj:{p.id}:{tg_id}")
-    b.button(text="⬅️ Назад", callback_data=f"emp:view:{tg_id}")
-    b.adjust(1)
-    return b.as_markup()
 
 
 def kb_report_search_nav() -> InlineKeyboardMarkup:

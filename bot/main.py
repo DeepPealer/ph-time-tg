@@ -1,8 +1,9 @@
-﻿import asyncio
+import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
@@ -23,9 +24,21 @@ async def main() -> None:
     logger.info("Initializing database")
     await init_db()
 
+    # Auto-detect proxy if not set manually
+    proxy_url = config.proxy_url
+    if not proxy_url:
+        logger.info("PROXY_URL not set, trying to auto-find a working proxy...")
+        from bot.utils.proxy_finder import find_working_proxy
+        proxy_url = await find_working_proxy()
+        if proxy_url:
+            logger.info(f"Auto-selected proxy: {proxy_url}")
+        else:
+            logger.info("No proxy found, connecting directly to Telegram.")
+
     bot = Bot(
         token=config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        session=AiohttpSession(proxy=proxy_url) if proxy_url else None,
     )
     dp = Dispatcher(storage=MemoryStorage())
 

@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from aiogram import Router, F, Bot
+from aiogram.filters import StateFilter
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -48,7 +49,6 @@ def _menu(role: str):
 
 # ——— Entry ——————————————————————————————————————————————————————————————
 
-@router.message(F.text == "📋 Сдать отчет")
 async def start_report(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     if not db_user.is_active:
         await message.answer("⛔ У вас нет доступа. Обратитесь к администратору.")
@@ -98,25 +98,7 @@ async def use_today(call: CallbackQuery, state: FSMContext, db_user: User, sessi
     if db_user.city:
         await state.update_data(city=db_user.city)
         
-        # If bound to a project, jump straight to name
-        if db_user.role == UserRole.manager and db_user.project_id:
-            from bot.database.models import Project
-            res = await session.execute(select(Project).where(Project.id == db_user.project_id))
-            proj = res.scalar_one_or_none()
-            if proj:
-                await state.update_data(project=proj.name, project_id=proj.id)
-                await call.message.edit_text(f"✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
-                
-                name_to_use = db_user.pretty_name
-                if db_user.role == UserRole.employee:
-                    await state.update_data(employee_name=name_to_use)
-                    return await _finalize_step(call.message, state, db_user, session,
-                        "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
-                
-                return await _finalize_step(call.message, state, db_user, session,
-                    f"Шаг 4/14 — <b>Фамилия сотрудника</b>\nПредложение: «{name_to_use}»\nНажмите /use_name или введите вручную:",
-                    ReportForm.employee_name)
-
+        # All managers (city-wide) proceed to project selection for their city
         from bot.database.models import Project
         res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
         projs = res.scalars().all()
@@ -151,25 +133,7 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
     if db_user.city:
         await state.update_data(city=db_user.city)
         
-        # If bound to a project, jump straight to name
-        if db_user.role == UserRole.manager and db_user.project_id:
-            from bot.database.models import Project
-            res = await session.execute(select(Project).where(Project.id == db_user.project_id))
-            proj = res.scalar_one_or_none()
-            if proj:
-                await state.update_data(project=proj.name, project_id=proj.id)
-                await message.answer(f"{msg_prefix}✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
-                
-                name_to_use = db_user.pretty_name
-                if db_user.role == UserRole.employee:
-                    await state.update_data(employee_name=name_to_use)
-                    return await _finalize_step(message, state, db_user, session,
-                        "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
-
-                return await _finalize_step(message, state, db_user, session,
-                    f"Шаг 4/14 — <b>Фамилия сотрудника</b>\nПредложение: «{name_to_use}»\nНажмите /use_name или введите вручную:",
-                    ReportForm.employee_name)
-
+        # All managers (city-wide) proceed to project selection for their city
         from bot.database.models import Project
         res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
         projs = res.scalars().all()
