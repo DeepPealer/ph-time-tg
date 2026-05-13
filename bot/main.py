@@ -24,9 +24,13 @@ async def main() -> None:
     logger.info("Initializing database")
     await init_db()
 
-    # Auto-detect proxy if not set manually
+    # Setup Bot Session and API Server
+    from aiogram.client.telegram import TelegramAPIServer
+    api_server = TelegramAPIServer.from_base(config.telegram_api_url) if config.telegram_api_url else None
+    
+    # Auto-detect proxy if not set manually (ONLY if we don't have a custom API server)
     proxy_url = config.proxy_url
-    if not proxy_url:
+    if not proxy_url and not config.telegram_api_url:
         logger.info("PROXY_URL not set, trying to auto-find a working proxy...")
         from bot.utils.proxy_finder import find_working_proxy
         proxy_url = await find_working_proxy()
@@ -38,8 +42,10 @@ async def main() -> None:
     bot = Bot(
         token=config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-        session=AiohttpSession(proxy=proxy_url) if proxy_url else None,
+        session=AiohttpSession(proxy=proxy_url) if proxy_url and not config.telegram_api_url else None,
     )
+    if api_server:
+        bot.session.api = api_server
     dp = Dispatcher(storage=MemoryStorage())
 
     # Register middleware on all updates
@@ -56,13 +62,32 @@ async def main() -> None:
     scheduler = setup_scheduler(bot)
     scheduler.start()
 
+    from bot.utils.proxy_finder import find_working_proxy
+
     logger.info("Starting bot…")
     while True:
         try:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         except Exception as e:
-            logger.error(f"Бот упал с ошибкой: {e}. Перезапуск через 5 секунд…")
-            await asyncio.sleep(5)
+            logger.error(f"Бот упал с ошибкой: {type(e).__name__}: {e}")
+            logger.info("Возможно, умер прокси. Закрываем сессию и ищем новый...")
+            
+            try:
+                await bot.session.close()
+            except Exception:
+                pass
+                
+            await asyncio.sleep(2)
+            
+            # Если прокси умер, ищем новый автоматически
+            new_proxy = await find_working_proxy()
+            if new_proxy:
+                logger.info(f"🔄 Переключаемся на новый прокси: {new_proxy}")
+            else:
+                logger.warning("⚠️ Не удалось найти рабочий прокси. Пробуем без прокси.")
+                
+            # Обновляем сессию у бота
+            bot.session = AiohttpSession(proxy=new_proxy) if new_proxy else AiohttpSession()
 
 
 if __name__ == "__main__":

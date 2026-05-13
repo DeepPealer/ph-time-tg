@@ -15,6 +15,7 @@ class Config:
     admin_ids: list[int]
     database_url: str
     proxy_url: str | None           # Optional HTTP/SOCKS5 proxy for Telegram API
+    telegram_api_url: str | None    # Optional Custom Telegram API URL (e.g. Cloudflare Worker)
 
 
 def load_config() -> Config:
@@ -40,6 +41,7 @@ def load_config() -> Config:
         admin_ids=admin_ids,
         database_url=getenv("DATABASE_URL", "sqlite+aiosqlite:///data/bot.db"),
         proxy_url=getenv("PROXY_URL", None) or None,
+        telegram_api_url=getenv("TELEGRAM_API_URL", None) or None,
     )
 
 
