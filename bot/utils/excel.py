@@ -1,4 +1,4 @@
-﻿import io
+import io
 import calendar
 from datetime import date
 from collections import defaultdict
@@ -10,7 +10,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
-from bot.database.models import Report, User, Plan, ManagementExpense, Project
+from bot.database.models import Report, User, Plan, ManagementExpense, Project, City
 
 
 # --- Palette -----------------------------------------------------------------
@@ -122,7 +122,16 @@ async def generate_monthly_calendar(
     if city != "all": q_proj = q_proj.where(Project.city == city)
     all_projects = (await session.execute(q_proj)).scalars().all()
 
-    cities_to_process = ["gomel", "minsk"] if city == "all" else [city]
+    if city == "all":
+        city_objs_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+        city_objs = city_objs_res.scalars().all()
+        cities_to_process = [c.slug for c in city_objs]
+        city_name_map = {c.slug: c.name for c in city_objs}
+    else:
+        cities_to_process = [city]
+        city_obj_res = await session.execute(select(City).where(City.slug == city))
+        city_obj = city_obj_res.scalar_one_or_none()
+        city_name_map = {city: city_obj.name if city_obj else city.title()}
 
     wb = Workbook()
     headers = [
@@ -134,7 +143,7 @@ async def generate_monthly_calendar(
     wb.remove(wb.active)
 
     def build_city_sheet(sheet_city: str, reports: list[Report], plans: list[Plan], mgmt_list: list[ManagementExpense]):
-        city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(sheet_city, sheet_city.title())
+        city_label = city_name_map.get(sheet_city, sheet_city.title())
         ws = wb.create_sheet(title=city_label)
         
         ws.column_dimensions["A"].width = 16

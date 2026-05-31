@@ -1,4 +1,4 @@
-﻿from datetime import date as py_date, datetime
+from datetime import date as py_date, datetime
 from typing import Optional
 from enum import Enum as PyEnum
 from sqlalchemy import (
@@ -63,6 +63,7 @@ class Report(Base):
     salary_level: Mapped[int] = mapped_column(Integer)
     trainee_salary: Mapped[float] = mapped_column(Float, default=0.0)
     city: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'gomel' | 'minsk'
+    shift_type: Mapped[str] = mapped_column(String(20), server_default="full")  # 'full' | 'half'
     
     # --- Payment Tracking ---
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -140,5 +141,34 @@ class Project(Base):
     city: Mapped[str] = mapped_column(String(20)) # 'gomel' | 'minsk'
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class City(Base):
+    __tablename__ = "cities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    emoji: Mapped[str] = mapped_column(String(10), default="🏙️")
+    thread_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    rules: Mapped[list["SalaryRule"]] = relationship("SalaryRule", back_populates="city", cascade="all, delete-orphan")
+
+
+class SalaryRule(Base):
+    __tablename__ = "salary_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="CASCADE"))
+    day_type: Mapped[str] = mapped_column(String(20), default="all_days")  # all_days, weekday, saturday, sunday
+    shift_type: Mapped[str] = mapped_column(String(20), default="full")  # full, half
+    threshold_min: Mapped[float] = mapped_column(Float, default=0.0)
+    threshold_max: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited
+    base_salary: Mapped[float] = mapped_column(Float, default=0.0)
+    percentage: Mapped[float] = mapped_column(Float, default=0.0)  # e.g. 0.10 for 10%
+
+    city: Mapped["City"] = relationship("City", back_populates="rules")
+
 
 

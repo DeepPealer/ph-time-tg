@@ -13,34 +13,35 @@ def kb_report_nav() -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
-def kb_city() -> InlineKeyboardMarkup:
+def kb_city(cities: list) -> InlineKeyboardMarkup:
     """City selector during report submission."""
     b = InlineKeyboardBuilder()
-    b.button(text="🏙️ Гомель", callback_data="report:city:gomel")
-    b.button(text="🌆 Минск",  callback_data="report:city:minsk")
+    for city in cities:
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"report:city:{city.slug}")
     b.button(text="❌ Отмена", callback_data="report:cancel")
     b.adjust(2, 1)
     return b.as_markup()
 
 
-def kb_city_for_employee(tg_id: int) -> InlineKeyboardMarkup:
+def kb_city_for_employee(tg_id: int, cities: list) -> InlineKeyboardMarkup:
     """Admin panel: set city for employee."""
     b = InlineKeyboardBuilder()
-    b.button(text="🏙️ Гомель",        callback_data=f"emp:city:gomel:{tg_id}")
-    b.button(text="🌆 Минск",         callback_data=f"emp:city:minsk:{tg_id}")
+    for city in cities:
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"emp:city:{city.slug}:{tg_id}")
     b.button(text="❓ Спрашивать",    callback_data=f"emp:city:none:{tg_id}")
     b.button(text="⬅️ Назад",         callback_data=f"emp:view:{tg_id}")
     b.adjust(2, 1, 1)
     return b.as_markup()
 
-def kb_city_selector() -> InlineKeyboardMarkup:
+def kb_city_selector(cities: list) -> InlineKeyboardMarkup:
     """General city selector for Cabinet."""
     b = InlineKeyboardBuilder()
-    b.button(text="🏙️ Гомель", callback_data="city:gomel")
-    b.button(text="🌆 Минск",  callback_data="city:minsk")
+    for city in cities:
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"city:{city.slug}")
     b.button(text="❌ Отмена", callback_data="cab:close")
     b.adjust(2, 1)
     return b.as_markup()
+
 
 
 def kb_cabinet_main() -> InlineKeyboardMarkup:
@@ -52,11 +53,11 @@ def kb_cabinet_main() -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
-def kb_analytics_cities() -> InlineKeyboardMarkup:
+def kb_analytics_cities(cities: list) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="🌍 Все города", callback_data="chart_city:all")
-    b.button(text="🏙️ Гомель", callback_data="chart_city:gomel")
-    b.button(text="🌆 Минск",  callback_data="chart_city:minsk")
+    for city in cities:
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"chart_city:{city.slug}")
     b.button(text="⬅️ Назад",  callback_data="adm:back")
     b.adjust(1, 2, 1)
     return b.as_markup()
@@ -110,6 +111,16 @@ def menu_admin() -> ReplyKeyboardMarkup:
 def kb_cancel() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="❌ Отмена", callback_data="report:cancel")
+    return b.as_markup()
+
+
+def kb_shift_type() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="☀️ Полная смена", callback_data="report:shift:full")
+    # b.button(text="🌤️ Половина смены", callback_data="report:shift:half")
+    b.button(text="⬅️ Назад", callback_data="report:back")
+    b.button(text="❌ Отмена", callback_data="report:cancel")
+    b.adjust(1, 2)
     return b.as_markup()
 
 
@@ -168,6 +179,7 @@ def kb_admin_main() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="📊 Отчёты",               callback_data="adm:reports")
     b.button(text="👥 Сотрудники",           callback_data="adm:employees")
+    b.button(text="🏙️ Города",               callback_data="adm:cities")
     b.button(text="🏢 Проекты",             callback_data="adm:projects")
     b.button(text="🎯 Планы продаж",         callback_data="adm:plans")
     b.button(text="📈 Статистика планов",    callback_data="adm:stats")
@@ -222,11 +234,11 @@ def kb_mgmt_month_select(current_year: int, current_month: int) -> InlineKeyboar
     return b.as_markup()
 
 
-def kb_monthly_report_cities() -> InlineKeyboardMarkup:
+def kb_monthly_report_cities(cities: list) -> InlineKeyboardMarkup:
     """City picker for monthly report."""
     b = InlineKeyboardBuilder()
-    b.button(text="🏙️ Гомель", callback_data="period:monthly_city:gomel")
-    b.button(text="🌆 Минск",  callback_data="period:monthly_city:minsk")
+    for city in cities:
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"period:monthly_city:{city.slug}")
     b.button(text="🌐 Все города", callback_data="period:monthly_city:all")
     b.button(text="⬅️ Назад",  callback_data="adm:back")
     b.adjust(2, 1, 1)
@@ -262,10 +274,10 @@ def kb_report_review(report_id: int, is_admin: bool = False) -> InlineKeyboardMa
     return b.as_markup()
 
 
-def kb_employee_cities() -> InlineKeyboardMarkup:
+def kb_employee_cities(cities: list) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.button(text="🏙️ Гомель", callback_data="adm:employees:city:gomel")
-    b.button(text="🌆 Минск",  callback_data="adm:employees:city:minsk")
+    for city in cities:
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"adm:employees:city:{city.slug}")
     b.button(text="❓ Без города", callback_data="adm:employees:city:none")
     b.button(text="➕ Добавить по ID", callback_data="emp:add")
     b.button(text="📥 Заявки", callback_data="adm:pending")
@@ -535,3 +547,70 @@ def kb_analytics_options(city: str, projects: list) -> InlineKeyboardMarkup:
     b.button(text="⬅️ Назад", callback_data="adm:analytics")
     b.adjust(1)
     return b.as_markup()
+
+
+def kb_admin_cities(cities: list) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for c in cities:
+        status = "✅" if c.is_active else "⏸️"
+        b.button(text=f"{c.emoji} {c.name} {status}", callback_data=f"city:view:{c.id}")
+    b.button(text="➕ Добавить город", callback_data="city:add")
+    b.button(text="⬅️ Назад", callback_data="adm:back")
+    b.adjust(1)
+    return b.as_markup()
+
+
+def kb_city_actions(city_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    status_label = "⏸️ Деактивировать" if is_active else "✅ Активировать"
+    b.button(text="📝 Изменить название", callback_data=f"city:edit_name:{city_id}")
+    b.button(text="🌉 Изменить эмодзи", callback_data=f"city:edit_emoji:{city_id}")
+    b.button(text="🧵 Изменить топик ID", callback_data=f"city:edit_thread:{city_id}")
+    b.button(text="📊 Тарифная сетка ЗП", callback_data=f"city:rates:{city_id}")
+    b.button(text=status_label, callback_data=f"city:toggle:{city_id}")
+    b.button(text="❌ Удалить город", callback_data=f"city:delete:{city_id}")
+    b.button(text="⬅️ Назад", callback_data="adm:cities")
+    b.adjust(2, 2, 2, 1)
+    return b.as_markup()
+
+
+def kb_city_presets() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="🏙️ Пресет Гомеля (разные по дням)", callback_data="city:preset:gomel")
+    b.button(text="🌆 Пресет Минска (общие тарифы)", callback_data="city:preset:minsk")
+    b.button(text="⚪ Без тарифов (пустой)", callback_data="city:preset:empty")
+    b.button(text="❌ Отмена", callback_data="adm:cities")
+    b.adjust(1)
+    return b.as_markup()
+
+
+def kb_salary_rules(city_id: int, rules: list) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    day_labels = {
+        "weekday": "Пн-Пт",
+        "saturday": "Сб",
+        "sunday": "Вс",
+        "all_days": "Пн-Вс"
+    }
+    
+    # Sort rules: day_type (all_days, weekday, saturday, sunday), shift_type (full, half), threshold_min
+    day_order = {"all_days": 0, "weekday": 1, "saturday": 2, "sunday": 3}
+    sorted_rules = sorted(
+        rules,
+        key=lambda r: (day_order.get(r.day_type, 9), r.shift_type, r.threshold_min)
+    )
+    
+    for r in sorted_rules:
+        if r.shift_type == "half":
+            continue
+        day_lbl = day_labels.get(r.day_type, r.day_type)
+        shift_lbl = " (1/2)" if r.shift_type == "half" else ""
+        max_val = f"{r.threshold_max:.0f}" if r.threshold_max else "~"
+        text = f"{day_lbl}{shift_lbl}: {r.threshold_min:.0f}-{max_val}р ➔ {r.base_salary:.0f}+{r.percentage*100:.0f}%"
+        b.button(text=text, callback_data=f"rate:edit:{r.id}")
+        
+    b.button(text="➕ Добавить диапазон", callback_data=f"rate:add:{city_id}")
+    b.button(text="⬅️ К профилю города", callback_data=f"city:view:{city_id}")
+    b.adjust(1)
+    return b.as_markup()
+

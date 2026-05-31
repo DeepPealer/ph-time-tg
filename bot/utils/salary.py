@@ -1,4 +1,4 @@
-﻿"""
+"""
 Salary calculation rules (hardcoded per business rules).
 
 Photographer Gomel:
@@ -89,15 +89,48 @@ def _apply_tiers(revenue: float, tiers: list[tuple]) -> tuple[float, float, floa
 
 
 def calculate_photographer_salary(
-    revenue: float, shift_count: int, city: str, weekday: int
+    revenue: float, shift_count: int, city: str, weekday: int, rules: list = None, shift_type: str = "full"
 ) -> tuple[float, str]:
     """
     Returns (salary_per_person, description_string).
     Description suitable for display in Telegram.
     """
     city = city.lower()
-    rules = _get_rules(city, weekday)
-    base, pct, _ = _apply_tiers(revenue, rules)
+    
+    if rules is None:
+        # Fallback to legacy hardcoded rules
+        if city == CITY_MINSK and shift_type == "half":
+            tiers = _MINSK_HALF
+        else:
+            tiers = _get_rules(city, weekday)
+    else:
+        # Match dynamic rules from database
+        day_map = {5: "saturday", 6: "sunday"}
+        target_day = day_map.get(weekday, "weekday")
+        
+        # Filter rules by day type
+        filtered = [r for r in rules if r.day_type == target_day]
+        if not filtered:
+            filtered = [r for r in rules if r.day_type == "all_days"]
+        if not filtered:
+            filtered = rules
+            
+        # Get matching shift type rules
+        shift_rules = [r for r in filtered if r.shift_type == shift_type]
+        if not shift_rules:
+            # Fallback to 'full' if 'half' not found, or just first available
+            shift_rules = [r for r in filtered if r.shift_type == "full"]
+        if not shift_rules:
+            shift_rules = filtered
+            
+        tiers = []
+        for r in shift_rules:
+            tiers.append((r.threshold_min, r.threshold_max, r.base_salary, r.percentage))
+            
+        if not tiers:
+            tiers = _get_rules(city, weekday)
+
+    base, pct, _ = _apply_tiers(revenue, tiers)
     total_salary = base + (revenue * pct)
     salary = round(total_salary / max(shift_count, 1), 2)
 
