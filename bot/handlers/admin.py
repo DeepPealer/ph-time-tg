@@ -110,7 +110,7 @@ async def admin_review_reports(message: Message, db_user: User, session: AsyncSe
     from bot.handlers.admin import review_list
     # We need a dummy callback-like object or just call the logic
     # Actually it's cleaner to just call a helper or the function with message
-    await review_list(None, session, db_user, message=message)
+    await review_list(None, session, db_user, message=message, state=state)
 
 
 # ——— Back ———————————————————————————————————————————————————————————————————
@@ -1588,10 +1588,17 @@ async def mgr_mgmt_comment_input(message: Message, state: FSMContext, session: A
     await state.update_data(mgmt_comment=message.text.strip())
     await mgmt_save(message, state, session, db_user)
 
-@router.callback_query(F.data.startswith("review:list:"))
-async def review_list(call: CallbackQuery | None, session: AsyncSession, db_user: User, message: Message | None = None):
-    # review:list:<page>
-    page = int(call.data.split(":")[2]) if call and ":" in call.data else 0
+@router.callback_query(F.data.startswith("review:list"))
+async def review_list(call: CallbackQuery | None, session: AsyncSession, db_user: User, state: FSMContext | None = None, message: Message | None = None):
+    # review:list or review:list:<page>
+    if state:
+        await state.clear()
+    page = 0
+    if call and len(call.data.split(":")) > 2:
+        try:
+            page = int(call.data.split(":")[2])
+        except ValueError:
+            page = 0
     if not session:
         from bot.database.db import SessionLocal
         async with SessionLocal() as session:
@@ -1719,7 +1726,7 @@ async def review_view(call: CallbackQuery, session: AsyncSession, db_user: User)
 
 
 @router.callback_query(F.data.startswith("review:ok:"))
-async def review_ok(call: CallbackQuery, session: AsyncSession, db_user: User):
+async def review_ok(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
     if not _require_admin_or_manager(db_user):
         return await call.answer("Нет доступа")
 
@@ -1732,7 +1739,7 @@ async def review_ok(call: CallbackQuery, session: AsyncSession, db_user: User):
         await session.commit()
         await call.answer("Отчет проверен!", show_alert=True)
         # return to tree
-        await review_list(call, session, db_user)
+        await review_list(call, session, db_user, state=state)
     else:
         await call.answer("Ошибка, отчет не найден")
 
@@ -1871,7 +1878,7 @@ async def review_reject_start(call: CallbackQuery, state: FSMContext, session: A
     await state.update_data(reject_report_id=report_id)
     await state.set_state(AdminForm.reject_reason)
     
-    await call.message.answer(
+    await call.message.edit_text(
         "📝 <b>Причина отклонения</b>\n\nВведите причину (её увидит сотрудник).\n"
         "Например: <i>«Неверно указана выручка по безналу»</i>",
         parse_mode="HTML",
@@ -1901,9 +1908,19 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
         await message.answer("❌ Отчет не найден (возможно, уже удален).")
         return
 
-    emp_id = r.user_id
     date_str = r.date.strftime("%d.%m.%Y")
     proj_name = r.project_name
+
+    # Load the user who submitted the report to get their telegram_id
+    user_res = await session.execute(
+        select(User).where(User.id == r.user_id)
+    )
+    user_obj = user_res.scalar_one_or_none()
+    if not user_obj:
+        await message.answer("❌ Пользователь, создавший отчет, не найден.")
+        return
+
+    emp_tg_id = user_obj.telegram_id
 
     # 2. Notify employee
     try:
@@ -1914,9 +1931,9 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
             f"💬 Причина: <i>{reason}</i>\n\n"
             f"Пожалуйста, <b>сдайте отчет заново</b> с корректными данными."
         )
-        await bot.send_message(emp_id, notify_text, parse_mode="HTML")
+        await bot.send_message(emp_tg_id, notify_text, parse_mode="HTML")
     except Exception as e:
-        print(f"Failed to notify employee {emp_id}: {e}")
+        print(f"Failed to notify employee {emp_tg_id}: {e}")
 
     # 3. Delete report
     await session.delete(r)
@@ -1925,11 +1942,8 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
 
     await message.answer(f"✅ Отчет #{report_id} успешно отклонен. Сотрудник уведомлен.")
     
-    # Return to panel
-    if db_user.role == UserRole.admin:
-        await show_admin_panel(message, db_user, state)
-    else:
-        await show_manager_panel(message, db_user)
+    # Return to the list of unreviewed reports
+    await review_list(None, session, db_user, state=state, message=message)
 
 
 # ——— Projects ————————————————————————————————————————————————————————————————
