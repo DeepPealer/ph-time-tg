@@ -3,7 +3,7 @@ from calendar import monthrange
 import html
 
 from aiogram import Router, F, Bot
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, BufferedInputFile, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -19,7 +19,7 @@ from bot.keyboards.builders import (
     kb_projects, kb_project_actions, kb_projects_for_plan, kb_report_search_nav
 )
 from bot.utils.excel import generate_excel_report, generate_monthly_calendar
-from bot.utils.salary import calculate_manager_salary
+from bot.utils.salary import calculate_manager_salary, CITY_LABELS
 from bot.utils.logging import log_action
 from bot.utils.charts import (
     generate_revenue_chart, generate_plan_performance_chart,
@@ -50,6 +50,17 @@ class AdminForm(StatesGroup):
     proj_city         = State()
     proj_name         = State()
     mgmt_list_date    = State()
+    
+    # Dynamic city and rate states
+    city_name         = State()
+    city_slug         = State()
+    city_emoji        = State()
+    city_thread       = State()
+    city_preset       = State()
+    city_edit_field   = State()
+    rate_edit_values  = State()
+    rate_add_values   = State()
+
 
 class ManagerMgmtForm(StatesGroup):
     date     = State()
@@ -78,19 +89,23 @@ def _kb_manager_main() -> InlineKeyboardMarkup:
 
 # ——— Entry ——————————————————————————————————————————————————————————————————
 
-@router.message(F.text == "⚙️ Админ-панель")
 async def show_admin_panel(message: Message, db_user: User, state: FSMContext):
-    if not _require_admin(db_user):
+    if not _require_admin_or_manager(db_user):
         await message.answer("⛔ Нет доступа.")
         return
     await state.clear()
-    await message.answer("⚙️ <b>Админ-панель</b>\n\nВыберите раздел:",
-                         parse_mode="HTML", reply_markup=kb_admin_main())
+    
+    if db_user.role == UserRole.admin:
+        await message.answer("⚙️ <b>Админ-панель</b>\n\nВыберите раздел:",
+                             parse_mode="HTML", reply_markup=kb_admin_main())
+    else:
+        await message.answer("⚙️ <b>Панель управляющего</b>\n\nВыберите раздел:",
+                             parse_mode="HTML", reply_markup=_kb_manager_main())
 
 
-@router.message(F.text == "📋 Проверка отчётов от менеджера")
-async def admin_review_reports(message: Message, db_user: User, session: AsyncSession):
+async def admin_review_reports(message: Message, db_user: User, session: AsyncSession, state: FSMContext):
     if not _require_admin_or_manager(db_user): return
+    await state.clear()
     # Reuse the manager's review list logic
     from bot.handlers.admin import review_list
     # We need a dummy callback-like object or just call the logic
@@ -139,14 +154,17 @@ async def adm_reports_by_date_start(call: CallbackQuery, state: FSMContext, db_u
 
 
 @router.message(AdminForm.report_search_date)
-async def adm_reports_by_date_input(message: Message, state: FSMContext, db_user: User):
+async def adm_reports_by_date_input(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     if not _require_admin(db_user): return
     try:
         dt = datetime.strptime(message.text.strip(), "%d.%m.%Y").date()
         await state.update_data(search_date=dt.isoformat())
         await state.set_state(AdminForm.report_search_city)
+        from bot.database.models import City
+        city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+        cities = city_res.scalars().all()
         from bot.keyboards.builders import kb_city
-        await message.answer("🏙️ Выберите город для фильтрации:", reply_markup=kb_city())
+        await message.answer("🏙️ Выберите город для фильтрации:", reply_markup=kb_city(cities))
     except ValueError:
         await message.answer("❌ Неверный формат. Введите дату как ДД.ММ.ГГГГ (например, 26.03.2026)")
 
@@ -195,10 +213,14 @@ async def adm_reports_by_date_finish(call: CallbackQuery, state: FSMContext, db_
         proj_id = int(proj_id_raw)
         query = query.where(Report.project_id == proj_id)
     
-    # Manager restriction: only their project if bound
+    # Manager restriction: city only
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
-    if role_val == "manager" and db_user.project_id:
-        query = query.where(Report.project_id == db_user.project_id)
+    if role_val == "manager":
+        if db_user.city:
+            query = query.where(Report.city == db_user.city)
+        else:
+            # Manager without city sees nothing
+            query = query.where(Report.id == -1)
         
     res = await session.execute(query.order_by(Report.id.desc()))
     reports = res.scalars().all()
@@ -229,9 +251,13 @@ async def adm_employees(call: CallbackQuery, session: AsyncSession, db_user: Use
     )
     total_emps = res_count.scalar() or 0
 
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
+
     await call.message.edit_text(
         f"👥 <b>Сотрудники</b> ({total_emps} чел.)\n\nВыберите город:",
-        parse_mode="HTML", reply_markup=kb_employee_cities()
+        parse_mode="HTML", reply_markup=kb_employee_cities(cities)
     )
     await call.answer()
 
@@ -249,7 +275,7 @@ async def adm_employees_city(call: CallbackQuery, session: AsyncSession, db_user
         query = query.where(User.city == city)
         city_label = "🏙️ ГОМЕЛЬ" if city == "gomel" else "🌆 МИНСК"
         
-    res = await session.execute(query.order_by(User.full_name))
+    res = await session.execute(query.order_by(User.display_name, User.full_name))
     employees = res.scalars().all()
     
     await call.message.edit_text(
@@ -275,7 +301,7 @@ async def emp_view(call: CallbackQuery, session: AsyncSession):
         if p: proj_str = f"📌 {p.name}"
 
     text = (
-        f"👤 <b>{emp.full_name}</b>\n"
+        f"👤 <b>{emp.pretty_name}</b>\n"
         f"📎 @{emp.username or '—'}\n"
         f"🆔 {emp.telegram_id}\n"
         f"🎭 Роль: {role_str}\n"
@@ -332,7 +358,7 @@ async def emp_add_id(message: Message, state: FSMContext, session: AsyncSession)
         user.role = UserRole.employee
         user.is_active = True
         await session.commit()
-        await message.answer(f"✅ {user.full_name} теперь сотрудник!", reply_markup=menu_admin())
+        await message.answer(f"✅ {user.pretty_name} теперь сотрудник!", reply_markup=menu_admin())
     else:
         # Pre-create record; will be enriched on first /start
         new = User(telegram_id=tg_id, full_name=f"User_{tg_id}",
@@ -354,7 +380,7 @@ async def emp_mkadmin(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.admin; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} назначен администратором.",
+        await call.message.edit_text(f"✅ {emp.pretty_name} назначен администратором.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -365,9 +391,11 @@ async def emp_mkmgr(call: CallbackQuery, session: AsyncSession):
     res = await session.execute(select(User).where(User.telegram_id == tg_id))
     emp = res.scalar_one_or_none()
     if emp:
-        emp.role = UserRole.manager; emp.is_active = True
+        emp.role = UserRole.manager
+        emp.is_active = True
+        emp.project_id = None # Managers are now city-wide
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} назначен управляющим.",
+        await call.message.edit_text(f"✅ {emp.pretty_name} назначен управляющим.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -380,7 +408,7 @@ async def emp_mkemp(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.employee; emp.is_active = True
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} снят с должности управляющего (теперь сотрудник).",
+        await call.message.edit_text(f"✅ {emp.pretty_name} снят с должности управляющего (теперь сотрудник).",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -393,7 +421,7 @@ async def emp_rmadmin(call: CallbackQuery, session: AsyncSession):
     if emp:
         emp.role = UserRole.employee
         await session.commit()
-        await call.message.edit_text(f"✅ {emp.full_name} теперь сотрудник.",
+        await call.message.edit_text(f"✅ {emp.pretty_name} теперь сотрудник.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Готово")
 
@@ -407,7 +435,7 @@ async def emp_delete(call: CallbackQuery, session: AsyncSession):
         emp.is_active = False
         emp.role = UserRole.pending
         await session.commit()
-        await call.message.edit_text(f"🗑️ {emp.full_name} лишён доступа.",
+        await call.message.edit_text(f"🗑️ {emp.pretty_name} лишён доступа.",
                                      reply_markup=kb_back("adm:employees"))
     await call.answer("Удалён")
 
@@ -426,7 +454,7 @@ async def adm_pending(call: CallbackQuery, session: AsyncSession, db_user: User)
         await call.answer(); return
     text = f"📥 <b>Заявки ({len(pending)})</b>\n\n"
     for u in pending:
-        text += f"• {u.full_name} (@{u.username or '—'}) — <code>{u.telegram_id}</code>\n"
+        text += f"• {u.pretty_name} (@{u.username or '—'}) — <code>{u.telegram_id}</code>\n"
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_back())
     await call.answer()
 
@@ -439,7 +467,7 @@ async def pending_approve_employee(call: CallbackQuery, session: AsyncSession, b
     if u:
         u.role = UserRole.employee; u.is_active = True
         await session.commit()
-        name = u.display_name or u.full_name
+        name = u.pretty_name
         await call.message.edit_reply_markup()
         await call.message.answer(f"✅ {name} одобрен как Сотрудник.")
         try:
@@ -456,7 +484,7 @@ async def pending_approve_manager(call: CallbackQuery, session: AsyncSession, bo
     if u:
         u.role = UserRole.manager; u.is_active = True
         await session.commit()
-        name = u.display_name or u.full_name
+        name = u.pretty_name
         await call.message.edit_reply_markup()
         await call.message.answer(f"✅ {name} одобрен как Управляющий.")
         try:
@@ -473,7 +501,7 @@ async def pending_deny(call: CallbackQuery, session: AsyncSession, bot: Bot):
     if u:
         await session.delete(u); await session.commit()
         await call.message.edit_reply_markup()
-        await call.message.answer(f"🗑️ Заявка от {u.full_name} отклонена.")
+        await call.message.answer(f"🗑️ Заявка от {u.pretty_name} отклонена.")
         try:
             await bot.send_message(tg_id, "❌ Ваш запрос на доступ отклонён.")
         except Exception: pass
@@ -483,14 +511,17 @@ async def pending_deny(call: CallbackQuery, session: AsyncSession, bot: Bot):
 # ——— Employee City ——————————————————————————————————————————————————————————
 
 @router.callback_query(F.data.startswith("emp:setcity:"))
-async def emp_setcity_prompt(call: CallbackQuery, db_user: User):
+async def emp_setcity_prompt(call: CallbackQuery, db_user: User, session: AsyncSession):
     if not _require_admin(db_user): return
     tg_id = int(call.data.split(":")[2])
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     await call.message.edit_text(
         "🏙️ <b>Выберите город для сотрудника:</b>\n"
         "«Спрашивать» — бот будет спрашивать при каждом отчёте.",
         parse_mode="HTML",
-        reply_markup=kb_city_for_employee(tg_id)
+        reply_markup=kb_city_for_employee(tg_id, cities)
     )
     await call.answer()
 
@@ -508,55 +539,68 @@ async def emp_city_set(call: CallbackQuery, session: AsyncSession, db_user: User
         await session.commit()
         city_label = {"gomel": "Гомель", "minsk": "Минск"}.get(city or "", "спрашивать")
         await call.message.edit_text(
-            f"✅ Город сотрудника <b>{emp.full_name}</b> установлен: <b>{city_label}</b>",
+            f"✅ Город сотрудника <b>{emp.pretty_name}</b> установлен: <b>{city_label}</b>",
             parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
         )
     await call.answer("Сохранено")
+    
 
+# ——— Employee Project ————————————————————————————————————————————————————————
 
-@router.callback_query(F.data.startswith("emp:bindproj:"))
-async def emp_bindproj_prompt(call: CallbackQuery, session: AsyncSession, db_user: User):
+@router.callback_query(F.data.startswith("emp:setproj:"))
+async def emp_setproj_prompt(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
     tg_id = int(call.data.split(":")[2])
     
-    # Fetch all active projects
-    res = await session.execute(select(Project).where(Project.is_active == True))
-    projects = res.scalars().all()
+    res = await session.execute(select(User).where(User.telegram_id == tg_id))
+    emp = res.scalar_one_or_none()
+    if not emp: return await call.answer("Не найден")
+    
+    if not emp.city:
+        return await call.answer("⚠️ Сначала установите город сотруднику!", show_alert=True)
+    
+    # Fetch projects for the employee's city
+    res_p = await session.execute(select(Project).where(Project.city == emp.city, Project.is_active == True))
+    projects = res_p.scalars().all()
     
     from bot.keyboards.builders import kb_projects_for_user_binding
     await call.message.edit_text(
-        "📌 <b>Привязка управляющего к проекту:</b>\n\n"
-        "Если проект привязан, управляющий будет видеть ТОЛЬКО этот проект "
-        "при сдаче отчётов и вводе упр. расходов.",
+        f"📌 <b>Привязка проекта для {emp.pretty_name}</b>\n"
+        f"Город: {emp.city.title()}\n\n"
+        "Выберите проект из списка:",
         parse_mode="HTML",
         reply_markup=kb_projects_for_user_binding(projects, tg_id)
     )
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("emp:saveproj:"))
-async def emp_saveproj(call: CallbackQuery, session: AsyncSession, db_user: User):
+@router.callback_query(F.data.startswith("emp:proj:"))
+async def emp_proj_set(call: CallbackQuery, session: AsyncSession, db_user: User):
     if not _require_admin(db_user): return
-    parts = call.data.split(":")  # emp:saveproj:<proj_id>:<tg_id>
-    proj_id = int(parts[2])
-    tg_id = int(parts[3])
+    parts = call.data.split(":") # emp:proj:<proj_id>:<tg_id>
+    proj_id, tg_id = int(parts[2]), int(parts[3])
     
     res = await session.execute(select(User).where(User.telegram_id == tg_id))
     emp = res.scalar_one_or_none()
-    if emp:
-        emp.project_id = proj_id if proj_id != 0 else None
-        await session.commit()
+    if not emp: return await call.answer("Не найден")
+    
+    if proj_id == 0:
+        emp.project_id = None
         proj_name = "Нет привязки"
-        if emp.project_id:
-            pres = await session.execute(select(Project).where(Project.id == emp.project_id))
-            p = pres.scalar_one_or_none()
-            proj_name = p.name if p else "???"
-            
-        await call.message.edit_text(
-            f"✅ Управляющий <b>{emp.full_name}</b> привязан к проекту: <b>{proj_name}</b>",
-            parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
-        )
-    await call.answer("Привязано")
+    else:
+        res_p = await session.execute(select(Project).where(Project.id == proj_id))
+        p = res_p.scalar_one_or_none()
+        if not p: return await call.answer("Проект не найден")
+        emp.project_id = p.id
+        proj_name = p.name
+        
+    await session.commit()
+    await call.message.edit_text(
+        f"✅ Проект для <b>{emp.pretty_name}</b> установлен: <b>{proj_name}</b>",
+        parse_mode="HTML", reply_markup=kb_back(f"emp:view:{tg_id}")
+    )
+    await call.answer("Сохранено")
+
 
 
 # ——— Salary settings (legacy placeholder) ———————————————————————————————————
@@ -618,10 +662,11 @@ async def adm_manager_salary(call: CallbackQuery, session: AsyncSession, db_user
             for p in plans:
                 plans_by_city[p.city].append(p)
                 
-            sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, x != "gomel", x != "minsk"))
+            sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, str(x)))
             
             for city in sorted_cities:
-                city_label = {"gomel": "🏙️ ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "🌐 ОБЩИЕ")
+                city_name = CITY_LABELS.get(city or "", city or "")
+                city_label = f"🏙️ {city_name.upper()}" if city else "🌐 ОБЩИЕ"
                 lines.append(f"<b>{city_label}</b>")
                 
                 for plan in plans_by_city[city]:
@@ -749,11 +794,13 @@ async def plan_delete(call: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data == "plan:add")
-async def plan_add_prompt(call: CallbackQuery, state: FSMContext):
+async def plan_add_prompt(call: CallbackQuery, state: FSMContext, session: AsyncSession):
     await state.set_state(AdminForm.plan_city)
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     from bot.keyboards.builders import kb_city
-    # We use building keyboard for reports city selection as it is same
-    await call.message.edit_text("🏙️ Выберите город для плана:", reply_markup=kb_city())
+    await call.message.edit_text("🏙️ Выберите город для плана:", reply_markup=kb_city(cities))
     await call.answer()
 
 
@@ -863,10 +910,11 @@ async def adm_stats(call: CallbackQuery, session: AsyncSession, db_user: User):
 
         lines = ["📈 <b>Статистика выполнения планов</b>\n"]
 
-        sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, x != "gomel", x != "minsk"))
+        sorted_cities = sorted(plans_by_city.keys(), key=lambda x: (x is None, str(x)))
 
         for city in sorted_cities:
-            city_label = {"gomel": "🏙️ ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "🌐 ОБЩИЕ")
+            city_name = CITY_LABELS.get(city or "", city or "")
+            city_label = f"🏙️ {city_name.upper()}" if city else "🌐 ОБЩИЕ"
             lines.append(f"<b>{city_label}</b>")
             
             for plan in plans_by_city[city]:
@@ -927,10 +975,13 @@ def _progress_bar(pct: float, width: int = 10) -> str:
 # ——— Analytics / Charts ——————————————————————————————————————————————————————
 
 @router.callback_query(F.data == "adm:analytics")
-async def adm_analytics(call: CallbackQuery, db_user: User):
+async def adm_analytics(call: CallbackQuery, db_user: User, session: AsyncSession):
     if not _require_admin(db_user): return
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     await call.message.edit_text("📊 <b>Аналитика и Графики</b>\n\nВыберите город:",
-                                 parse_mode="HTML", reply_markup=kb_analytics_cities())
+                                 parse_mode="HTML", reply_markup=kb_analytics_cities(cities))
     await call.answer()
 
 
@@ -1057,12 +1108,15 @@ def _parse_date(text: str) -> date:
 # ——— Monthly Calendar Report —————————————————————————————————————————————————
 
 @router.callback_query(F.data == "period:monthly_calendar")
-async def period_monthly_calendar(call: CallbackQuery, db_user: User):
+async def period_monthly_calendar(call: CallbackQuery, db_user: User, session: AsyncSession):
     if not _require_admin(db_user): return
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     await call.message.edit_text(
         "📅 <b>Месячный отчёт</b>\n\nВыберите город:",
         parse_mode="HTML",
-        reply_markup=kb_monthly_report_cities()
+        reply_markup=kb_monthly_report_cities(cities)
     )
     await call.answer()
 
@@ -1117,25 +1171,35 @@ async def adm_mgmt_expenses(call: CallbackQuery, session: AsyncSession, db_user:
     if not _require_admin_or_manager(db_user): return
     await state.clear()
     
-    # If manager has a bound project, skip city selection or force it
-    role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
-    if role_val == "manager" and db_user.project_id:
-        res = await session.execute(select(Project).where(Project.id == db_user.project_id))
-        proj = res.scalar_one_or_none()
-        if proj:
-            await state.update_data(mgmt_city=proj.city, mgmt_project_id=proj.id, mgmt_project=proj.name)
-            await state.set_state(AdminForm.mgmt_category)
-            from bot.keyboards.builders import kb_mgmt_categories
-            is_admin = db_user.role == UserRole.admin
-            await call.message.edit_text(
-                f"📂 <b>Упр. расходы — {proj.name} ({proj.city})</b>\n\nВыберите категорию:",
-                parse_mode="HTML", reply_markup=kb_mgmt_categories(is_admin=is_admin)
-            )
-            await call.answer(); return
+    # Logic for old project-bound managers removed (all managers are city-wide now)
+    
+    if role_val == "manager" and db_user.city:
+        await state.update_data(mgmt_city=db_user.city)
+        # Proceed to project selection for this city
+        # Reuse logic from mgmt_city_select but without the callback context
+        q = select(Project.name).where(Project.is_active == True, Project.city == db_user.city)
+        res = await session.execute(q)
+        projects = res.scalars().all()
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        b = InlineKeyboardBuilder()
+        for p in sorted(projects):
+            b.button(text=p, callback_data=f"mgmt:proj:{p}")
+        b.button(text="🌐 Для всех проектов", callback_data="mgmt:proj:all")
+        b.button(text="◀️ Назад", callback_data="adm:back")
+        b.adjust(1)
+        await state.set_state(AdminForm.mgmt_project)
+        await call.message.edit_text(
+            f"📂 <b>Упр. расходы — {CITY_LABELS.get(db_user.city, db_user.city)}</b>\n\nВыберите проект:",
+            parse_mode="HTML", reply_markup=b.as_markup()
+        )
+        await call.answer(); return
 
     await state.set_state(AdminForm.mgmt_city)
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     from bot.keyboards.builders import kb_city
-    await call.message.edit_text("🏙️ Выберите город для расхода:", reply_markup=kb_city())
+    await call.message.edit_text("🏙️ Выберите город для расхода:", reply_markup=kb_city(cities))
     await call.answer()
 
 
@@ -1415,29 +1479,57 @@ async def mgr_panel_callback(call: CallbackQuery, db_user: User):
 
 @router.callback_query(F.data == "mgr:mgmt_start")
 async def mgr_mgmt_start(call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext):
-    if not db_user.role.value == "manager": return
-    if not db_user.project_id:
+    role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
+    if role_val != "manager": return
+    if not db_user.city:
         from bot.keyboards.builders import kb_back
         await call.message.edit_text(
-            "⚠️ Вы не привязаны к конкретному проекту. Пожалуйста, обратитесь к администратору для назначения проекта.",
+            "⚠️ Вы не привязаны к городу. Пожалуйста, обратитесь к администратору.",
             reply_markup=kb_back("mgr:panel")
         )
         await call.answer(); return
     
     await state.clear()
-    res = await session.execute(select(Project).where(Project.id == db_user.project_id))
-    proj = res.scalar_one_or_none()
-    if not proj:
-        return await call.answer("❌ Проект не найден.", show_alert=True)
-
-    await state.update_data(mgmt_city=proj.city, mgmt_project_id=proj.id, mgmt_project=proj.name)
-    await state.set_state(ManagerMgmtForm.date)
     
+    # City manager: must select project within their city
+    await state.update_data(mgmt_city=db_user.city)
+    res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
+    projects = res.scalars().all()
+    
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    for p in sorted(projects, key=lambda x: x.name):
+        b.button(text=p.name, callback_data=f"mgr:mgmt_proj:{p.id}")
+    b.button(text="🌐 Для всех проектов", callback_data="mgr:mgmt_proj:0")
+    b.button(text="◀️ Назад", callback_data="mgr:panel")
+    b.adjust(1)
+    
+    await call.message.edit_text(
+        f"📂 <b>Упр. расходы — {db_user.city.title()}</b>\n\nВыберите проект:",
+        parse_mode="HTML", reply_markup=b.as_markup()
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("mgr:mgmt_proj:"))
+async def mgr_mgmt_proj_select(call: CallbackQuery, state: FSMContext, session: AsyncSession):
+    proj_id = int(call.data.split(":")[2])
+    if proj_id == 0:
+        await state.update_data(mgmt_project_id=None, mgmt_project=None)
+        proj_name = "Все проекты"
+    else:
+        res = await session.execute(select(Project).where(Project.id == proj_id))
+        proj = res.scalar_one_or_none()
+        if not proj: return await call.answer("Проект не найден")
+        await state.update_data(mgmt_project_id=proj.id, mgmt_project=proj.name)
+        proj_name = proj.name
+
+    await state.set_state(ManagerMgmtForm.date)
     from bot.keyboards.builders import kb_mgmt_date
     t = date.today().strftime("%d.%m.%Y")
     y = (date.today() - timedelta(days=1)).strftime("%d.%m.%Y")
     await call.message.edit_text(
-        f"📂 <b>Упр. расходы — {proj.name} ({proj.city})</b>\n\nВыберите дату:",
+        f"📂 <b>Упр. расходы — {proj_name}</b>\n\nВыберите дату:",
         parse_mode="HTML", reply_markup=kb_mgmt_date(t, y)
     )
     await call.answer()
@@ -1512,11 +1604,11 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
         if call: return await call.answer("Нет доступа", show_alert=True)
         return await message.answer("Нет доступа")
 
-    # Manager must be bound to a project to see reports
+    # Manager must be bound to a city to see reports
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
-    if role_val == "manager" and not db_user.project_id:
+    if role_val == "manager" and not db_user.city:
         from bot.keyboards.builders import kb_back
-        txt = "⚠️ Вы не привязаны к конкретному проекту. Пожалуйста, обратитесь к администратору для назначения проекта."
+        txt = "⚠️ Вы не привязаны к конкретному проекту или городу. Пожалуйста, обратитесь к администратору."
         if call:
             await call.message.edit_text(txt, reply_markup=kb_back("mgr:panel"))
             await call.answer()
@@ -1527,9 +1619,12 @@ async def _review_list_impl(call: CallbackQuery | None, session: AsyncSession, d
     # Needs to match all unreviewed reports
     stmt = select(Report).where(Report.is_reviewed == False)
     
-    # Manager restriction: only their project
-    if role_val == "manager" and db_user.project_id:
-        stmt = stmt.where(Report.project_id == db_user.project_id)
+    # Manager restriction: city only
+    if role_val == "manager":
+        if db_user.city:
+            stmt = stmt.where(Report.city == db_user.city)
+        else:
+            stmt = stmt.where(Report.id == -1)
         
     stmt = stmt.order_by(Report.id.desc())
     res = await session.execute(stmt)
@@ -1703,19 +1798,17 @@ async def mgr_my_salary(call: CallbackQuery, session: AsyncSession, db_user: Use
     if not _require_admin_or_manager(db_user):
         return await call.answer("Нет доступа")
 
-    # Managers MUST be bound to a project
+    # Managers MUST be bound to a city
     role_val = db_user.role.value if hasattr(db_user.role, "value") else str(db_user.role)
-    if role_val == "manager" and not db_user.project_id:
-        await call.message.edit_text("⚠️ Вы не привязаны к конкретному проекту. Пожалуйста, обратитесь к администратору для назначения проекта.", reply_markup=kb_back("mgr:panel"))
+    if role_val == "manager" and not db_user.city:
+        await call.message.edit_text("⚠️ Вы не привязаны к городу. Пожалуйста, обратитесь к администратору.", reply_markup=kb_back("mgr:panel"))
         await call.answer(); return
 
     city = db_user.city
 
     # Fast plan lookup
     filters = [Plan.is_active == True, Plan.period == 'month']
-    if role_val == "manager" and db_user.project_id:
-        filters.append(Plan.project_id == db_user.project_id)
-    elif city:
+    if role_val == "manager":
         filters.append(Plan.city == city)
         
     res = await session.execute(select(Plan).where(*filters))
@@ -1900,10 +1993,13 @@ async def proj_delete(call: CallbackQuery, session: AsyncSession, db_user: User)
 
 
 @router.callback_query(F.data == "proj:add")
-async def proj_add_start(call: CallbackQuery, state: FSMContext):
+async def proj_add_start(call: CallbackQuery, state: FSMContext, session: AsyncSession):
     await state.set_state(AdminForm.proj_city)
+    from bot.database.models import City
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     from bot.keyboards.builders import kb_city
-    await call.message.edit_text("🏙️ Выберите город для нового проекта:", reply_markup=kb_city())
+    await call.message.edit_text("🏙️ Выберите город для нового проекта:", reply_markup=kb_city(cities))
     await call.answer()
 
 
@@ -1954,7 +2050,7 @@ async def debug_set_proj(message: Message, session: AsyncSession, db_user: User)
     target_user.project_id = proj_id if proj_id != 0 else None
     await session.commit()
     proj_name = proj.name if proj_id != 0 else "None"
-    await message.answer(f"✅ User {target_user.full_name} ({target_id}) bound to project: <b>{proj_name}</b> (ID: {proj_id})", parse_mode="HTML")
+    await message.answer(f"✅ User {target_user.pretty_name} ({target_id}) bound to project: <b>{proj_name}</b> (ID: {proj_id})", parse_mode="HTML")
 
 @router.message(Command("projects"))
 async def debug_list_projects(message: Message, session: AsyncSession, db_user: User):
@@ -1967,3 +2063,433 @@ async def debug_list_projects(message: Message, session: AsyncSession, db_user: 
         status = "✅" if p.is_active else "❌"
         lines.append(f"<code>{p.id}</code>: {p.name} ({p.city}) {status}")
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+# ——— Dynamic Cities Management ——————————————————————————————————————————————
+
+from bot.database.models import City, SalaryRule
+from bot.keyboards.builders import kb_admin_cities, kb_city_actions, kb_city_presets, kb_salary_rules
+
+
+async def _get_city_or_fail(session: AsyncSession, city_id: int, call: CallbackQuery):
+    res = await session.execute(select(City).where(City.id == city_id))
+    c = res.scalar_one_or_none()
+    if not c:
+        await call.answer("Город не найден", show_alert=True)
+    return c
+
+
+@router.callback_query(F.data == "adm:cities")
+async def adm_cities(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    res = await session.execute(select(City).order_by(City.name))
+    cities = res.scalars().all()
+    count = len(cities)
+    await call.message.edit_text(
+        f"🏙️ <b>Управление городами</b> ({count} шт.)\n\n"
+        "Выберите город для настройки или добавьте новый.",
+        parse_mode="HTML",
+        reply_markup=kb_admin_cities(cities)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("city:view:"))
+async def city_view(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    c = await _get_city_or_fail(session, city_id, call)
+    if not c: return
+
+    rules_res = await session.execute(select(SalaryRule).where(SalaryRule.city_id == city_id))
+    rules = rules_res.scalars().all()
+    status = "✅ Активен" if c.is_active else "⏸️ Неактивен"
+    thread_info = f"🧵 Топик ID: <code>{c.thread_id}</code>" if c.thread_id else "🧵 Топик: не задан"
+    text = (
+        f"{c.emoji} <b>Город: {c.name}</b>\n"
+        f"🔑 Slug: <code>{c.slug}</code>\n"
+        f"📊 Статус: {status}\n"
+        f"{thread_info}\n"
+        f"📐 Тарифных правил: <b>{len(rules)} шт.</b>"
+    )
+    await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_city_actions(c.id, c.is_active))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("city:toggle:"))
+async def city_toggle(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    c = await _get_city_or_fail(session, city_id, call)
+    if not c: return
+    c.is_active = not c.is_active
+    await session.commit()
+    await city_view(call, session, db_user)
+
+
+@router.callback_query(F.data.startswith("city:delete:"))
+async def city_delete(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    c = await _get_city_or_fail(session, city_id, call)
+    if not c: return
+    await session.delete(c)
+    await session.commit()
+    # Refresh CITY_LABELS
+    from bot.utils.salary import CITY_LABELS
+    CITY_LABELS.pop(c.slug, None)
+    await adm_cities(call, session, db_user)
+
+
+# ——— City edit field handlers ———————————————————————————————————————————————
+
+async def _city_edit_start(call: CallbackQuery, state: FSMContext, city_id: int, field: str, prompt: str):
+    await state.update_data(city_edit_id=city_id, city_edit_field=field)
+    await state.set_state(AdminForm.city_edit_field)
+    await call.message.edit_text(prompt, parse_mode="HTML", reply_markup=kb_back(f"city:view:{city_id}"))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("city:edit_name:"))
+async def city_edit_name(call: CallbackQuery, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    await _city_edit_start(call, state, city_id, "name", "📝 Введите новое <b>название города</b>:")
+
+
+@router.callback_query(F.data.startswith("city:edit_emoji:"))
+async def city_edit_emoji(call: CallbackQuery, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    await _city_edit_start(call, state, city_id, "emoji", "🌉 Введите новое <b>эмодзи</b> для города (например: 🌉):")
+
+
+@router.callback_query(F.data.startswith("city:edit_thread:"))
+async def city_edit_thread(call: CallbackQuery, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    await _city_edit_start(
+        call, state, city_id, "thread_id",
+        "🧵 Введите <b>ID Telegram-топика</b> (Thread ID) для пересылки отчетов.\n"
+        "Введите <code>0</code> чтобы убрать топик."
+    )
+
+
+@router.message(AdminForm.city_edit_field)
+async def city_edit_save(message: Message, state: FSMContext, session: AsyncSession):
+    d = await state.get_data()
+    city_id = d.get("city_edit_id")
+    field = d.get("city_edit_field")
+    raw = message.text.strip()
+
+    res = await session.execute(select(City).where(City.id == city_id))
+    c = res.scalar_one_or_none()
+    if not c:
+        await message.answer("❌ Город не найден.")
+        await state.clear()
+        return
+
+    if field == "name":
+        c.name = raw
+        # Refresh CITY_LABELS
+        from bot.utils.salary import CITY_LABELS
+        CITY_LABELS[c.slug] = c.name
+    elif field == "emoji":
+        c.emoji = raw
+    elif field == "thread_id":
+        try:
+            val = int(raw)
+            c.thread_id = val if val != 0 else None
+        except ValueError:
+            await message.answer("❌ Введите число (ID топика) или 0 для сброса.")
+            return
+
+    await session.commit()
+    await state.clear()
+
+    rules_res = await session.execute(select(SalaryRule).where(SalaryRule.city_id == city_id))
+    rules = rules_res.scalars().all()
+    status = "✅ Активен" if c.is_active else "⏸️ Неактивен"
+    thread_info = f"🧵 Топик ID: <code>{c.thread_id}</code>" if c.thread_id else "🧵 Топик: не задан"
+    text = (
+        f"{c.emoji} <b>Город: {c.name}</b>\n"
+        f"🔑 Slug: <code>{c.slug}</code>\n"
+        f"📊 Статус: {status}\n"
+        f"{thread_info}\n"
+        f"📐 Тарифных правил: <b>{len(rules)} шт.</b>"
+    )
+    await message.answer(f"✅ Сохранено!\n\n{text}", parse_mode="HTML", reply_markup=kb_city_actions(c.id, c.is_active))
+
+
+# ——— City add FSM ————————————————————————————————————————————————————————————
+
+@router.callback_query(F.data == "city:add")
+async def city_add_start(call: CallbackQuery, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    await state.set_state(AdminForm.city_name)
+    await call.message.edit_text(
+        "🏙️ <b>Добавление нового города</b>\n\n"
+        "Шаг 1/4 — Введите <b>название города</b> (например: Брест):",
+        parse_mode="HTML", reply_markup=kb_back("adm:cities")
+    )
+    await call.answer()
+
+
+@router.message(AdminForm.city_name)
+async def city_add_name(message: Message, state: FSMContext):
+    await state.update_data(city_name=message.text.strip())
+    await state.set_state(AdminForm.city_slug)
+    await message.answer(
+        "Шаг 2/4 — Введите <b>slug-идентификатор</b> города латиницей (например: <code>brest</code>):\n"
+        "⚠️ Только строчные буквы и цифры, без пробелов. Уникальный идентификатор.",
+        parse_mode="HTML"
+    )
+
+
+@router.message(AdminForm.city_slug)
+async def city_add_slug(message: Message, state: FSMContext, session: AsyncSession):
+    slug = message.text.strip().lower().replace(" ", "_")
+    # Check uniqueness
+    existing = (await session.execute(select(City).where(City.slug == slug))).scalar_one_or_none()
+    if existing:
+        await message.answer(f"❌ Slug <code>{slug}</code> уже существует. Введите другой:", parse_mode="HTML")
+        return
+    await state.update_data(city_slug=slug)
+    await state.set_state(AdminForm.city_emoji)
+    await message.answer("Шаг 3/4 — Введите <b>эмодзи</b> для города (например: 🌉):", parse_mode="HTML")
+
+
+@router.message(AdminForm.city_emoji)
+async def city_add_emoji(message: Message, state: FSMContext):
+    await state.update_data(city_emoji=message.text.strip())
+    await state.set_state(AdminForm.city_thread)
+    await message.answer(
+        "Шаг 4/4 — Введите <b>ID Telegram-топика</b> (Thread ID) для пересылки отчетов.\n"
+        "Введите <code>0</code> если топик не используется.",
+        parse_mode="HTML"
+    )
+
+
+@router.message(AdminForm.city_thread)
+async def city_add_thread(message: Message, state: FSMContext):
+    try:
+        thread_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введите число или 0:")
+        return
+    await state.update_data(city_thread=thread_id if thread_id != 0 else None)
+    await state.set_state(AdminForm.city_preset)
+    await message.answer(
+        "⚙️ Выберите <b>шаблон тарифной сетки ЗП</b> для этого города:",
+        parse_mode="HTML",
+        reply_markup=kb_city_presets()
+    )
+
+
+@router.callback_query(AdminForm.city_preset)
+async def city_add_preset(call: CallbackQuery, state: FSMContext, session: AsyncSession):
+    preset = call.data.split(":")[2]  # gomel, minsk, empty
+    d = await state.get_data()
+
+    c = City(
+        slug=d["city_slug"],
+        name=d["city_name"],
+        emoji=d["city_emoji"],
+        thread_id=d.get("city_thread"),
+        is_active=True
+    )
+    session.add(c)
+    await session.flush()
+
+    rules = []
+    if preset == "gomel":
+        base = c.id
+        rules = [
+            SalaryRule(city_id=base, day_type="weekday",  shift_type="full", threshold_min=0,    threshold_max=200,  base_salary=25.0, percentage=0.10),
+            SalaryRule(city_id=base, day_type="weekday",  shift_type="full", threshold_min=200,  threshold_max=300,  base_salary=0.0,  percentage=0.20),
+            SalaryRule(city_id=base, day_type="weekday",  shift_type="full", threshold_min=300,  threshold_max=None, base_salary=0.0,  percentage=0.22),
+            SalaryRule(city_id=base, day_type="saturday", shift_type="full", threshold_min=0,    threshold_max=400,  base_salary=25.0, percentage=0.10),
+            SalaryRule(city_id=base, day_type="saturday", shift_type="full", threshold_min=400,  threshold_max=800,  base_salary=0.0,  percentage=0.20),
+            SalaryRule(city_id=base, day_type="saturday", shift_type="full", threshold_min=800,  threshold_max=None, base_salary=0.0,  percentage=0.22),
+            SalaryRule(city_id=base, day_type="sunday",   shift_type="full", threshold_min=0,    threshold_max=350,  base_salary=25.0, percentage=0.10),
+            SalaryRule(city_id=base, day_type="sunday",   shift_type="full", threshold_min=350,  threshold_max=600,  base_salary=0.0,  percentage=0.20),
+            SalaryRule(city_id=base, day_type="sunday",   shift_type="full", threshold_min=600,  threshold_max=None, base_salary=0.0,  percentage=0.22),
+        ]
+    elif preset == "minsk":
+        base = c.id
+        rules = [
+            SalaryRule(city_id=base, day_type="all_days", shift_type="full", threshold_min=0,    threshold_max=450,  base_salary=45.0, percentage=0.10),
+            SalaryRule(city_id=base, day_type="all_days", shift_type="full", threshold_min=450,  threshold_max=1000, base_salary=0.0,  percentage=0.20),
+            SalaryRule(city_id=base, day_type="all_days", shift_type="full", threshold_min=1000, threshold_max=None, base_salary=0.0,  percentage=0.22),
+        ]
+    # empty: no rules added
+
+    if rules:
+        session.add_all(rules)
+
+    await session.commit()
+
+    # Update CITY_LABELS
+    from bot.utils.salary import CITY_LABELS
+    CITY_LABELS[c.slug] = c.name
+
+    await state.clear()
+    await call.message.edit_text(
+        f"✅ Город <b>{c.emoji} {c.name}</b> (<code>{c.slug}</code>) добавлен!\n"
+        f"📐 Создано тарифных правил: <b>{len(rules)}</b>",
+        parse_mode="HTML",
+        reply_markup=kb_city_actions(c.id, c.is_active)
+    )
+    await call.answer()
+
+
+# ——— Salary rules management ——————————————————————————————————————————————————
+
+@router.callback_query(F.data.startswith("city:rates:"))
+async def city_rates(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    c = await _get_city_or_fail(session, city_id, call)
+    if not c: return
+
+    rules_res = await session.execute(
+        select(SalaryRule).where(SalaryRule.city_id == city_id).order_by(SalaryRule.day_type, SalaryRule.shift_type, SalaryRule.threshold_min)
+    )
+    rules = rules_res.scalars().all()
+
+    text = (
+        f"📊 <b>Тарифная сетка: {c.emoji} {c.name}</b>\n\n"
+        "Нажмите на диапазон для редактирования.\n"
+        "Диапазоны сортируются: тип дня → тип смены → минимальный порог."
+    )
+    await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_salary_rules(city_id, rules))
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("rate:edit:"))
+async def rate_edit_start(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    rule_id = int(call.data.split(":")[2])
+    res = await session.execute(select(SalaryRule).where(SalaryRule.id == rule_id))
+    r = res.scalar_one_or_none()
+    if not r: return await call.answer("Правило не найдено", show_alert=True)
+
+    await state.update_data(rate_edit_id=rule_id, rate_city_id=r.city_id)
+    await state.set_state(AdminForm.rate_edit_values)
+
+    tmax = f"{r.threshold_max:.0f}" if r.threshold_max else "0"
+    await call.message.edit_text(
+        f"📝 <b>Редактирование тарифного правила</b>\n\n"
+        f"Текущее: <code>{r.threshold_min:.0f} {tmax} {r.base_salary:.1f} {r.percentage*100:.0f}</code>\n\n"
+        "Введите новые параметры одной строкой:\n"
+        "<code>мин_порог макс_порог оклад процент</code>\n\n"
+        "Пример: <code>0 200 25 10</code>\n"
+        "Для безлимитного верхнего порога укажите <code>0</code>:\n"
+        "<code>300 0 0 22</code>",
+        parse_mode="HTML",
+        reply_markup=kb_back(f"city:rates:{r.city_id}")
+    )
+    await call.answer()
+
+
+@router.message(AdminForm.rate_edit_values)
+async def rate_edit_save(message: Message, state: FSMContext, session: AsyncSession):
+    parts = message.text.strip().split()
+    try:
+        tmin, tmax_raw, base, pct = float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3])
+        tmax = None if tmax_raw == 0 else tmax_raw
+    except (ValueError, IndexError):
+        await message.answer("❌ Формат: <code>мин макс оклад процент</code>", parse_mode="HTML")
+        return
+
+    d = await state.get_data()
+    res = await session.execute(select(SalaryRule).where(SalaryRule.id == d["rate_edit_id"]))
+    r = res.scalar_one_or_none()
+    if r:
+        r.threshold_min = tmin
+        r.threshold_max = tmax
+        r.base_salary = base
+        r.percentage = pct / 100
+        await session.commit()
+        await message.answer("✅ Тариф обновлён!", reply_markup=kb_back(f"city:rates:{d['rate_city_id']}"))
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("rate:delete:"))
+async def rate_delete(call: CallbackQuery, session: AsyncSession, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    rule_id = int(call.data.split(":")[2])
+    res = await session.execute(select(SalaryRule).where(SalaryRule.id == rule_id))
+    r = res.scalar_one_or_none()
+    if not r: return await call.answer("Правило не найдено", show_alert=True)
+    city_id = r.city_id
+    await session.delete(r)
+    await session.commit()
+    await call.answer("Удалено")
+    # Navigate back
+    call.data = f"city:rates:{city_id}"
+    await city_rates(call, session, db_user)
+
+
+@router.callback_query(F.data.startswith("rate:add:"))
+async def rate_add_start(call: CallbackQuery, state: FSMContext, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    city_id = int(call.data.split(":")[2])
+    await state.update_data(rate_city_id=city_id)
+    await state.set_state(AdminForm.rate_add_values)
+    await call.message.edit_text(
+        "➕ <b>Новый тарифный диапазон</b>\n\n"
+        "Введите параметры одной строкой:\n"
+        "<code>тип_дня тип_смены мин_порог макс_порог оклад процент</code>\n\n"
+        "Типы дня: <code>weekday</code> / <code>saturday</code> / <code>sunday</code> / <code>all_days</code>\n"
+        "Типы смены: <code>full</code> (<code>half</code> временно отключен)\n\n"
+        "Пример (все дни, полная смена, 0-450р = оклад 45 + 10%):\n"
+        "<code>all_days full 0 450 45 10</code>\n\n"
+        "Безлимитный верхний порог — укажите <code>0</code>:\n"
+        "<code>weekday full 300 0 0 22</code>",
+        parse_mode="HTML",
+        reply_markup=kb_back(f"city:rates:{city_id}")
+    )
+    await call.answer()
+
+
+@router.message(AdminForm.rate_add_values)
+async def rate_add_save(message: Message, state: FSMContext, session: AsyncSession):
+    parts = message.text.strip().split()
+    try:
+        day_type, shift_type = parts[0], parts[1]
+        tmin, tmax_raw, base, pct = float(parts[2]), float(parts[3]), float(parts[4]), float(parts[5])
+        tmax = None if tmax_raw == 0 else tmax_raw
+    except (ValueError, IndexError):
+        await message.answer(
+            "❌ Формат: <code>тип_дня тип_смены мин макс оклад процент</code>\n"
+            "Пример: <code>all_days full 0 450 45 10</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    valid_days = {"weekday", "saturday", "sunday", "all_days"}
+    valid_shifts = {"full", "half"}
+    if day_type not in valid_days or shift_type not in valid_shifts:
+        await message.answer(
+            f"❌ Неверный тип дня или смены.\n"
+            f"Дни: {', '.join(valid_days)}\nСмены: {', '.join(valid_shifts)}"
+        )
+        return
+
+    d = await state.get_data()
+    city_id = d["rate_city_id"]
+
+    session.add(SalaryRule(
+        city_id=city_id,
+        day_type=day_type,
+        shift_type=shift_type,
+        threshold_min=tmin,
+        threshold_max=tmax,
+        base_salary=base,
+        percentage=pct / 100
+    ))
+    await session.commit()
+    await state.clear()
+    await message.answer(f"✅ Тарифный диапазон добавлен!", reply_markup=kb_back(f"city:rates:{city_id}"))
+

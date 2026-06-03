@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
-# Ensure entrypoint is executable
+# Ensure entrypoint has LF line endings (fix for Windows)
+RUN apt-get update && apt-get install -y dos2unix && dos2unix entrypoint.sh && apt-get purge -y dos2unix && rm -rf /var/lib/apt/lists/*
 RUN chmod +x entrypoint.sh
 
 # Use entrypoint script

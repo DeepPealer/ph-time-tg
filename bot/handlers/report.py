@@ -1,5 +1,6 @@
-﻿from datetime import date, datetime
+from datetime import date, datetime
 from aiogram import Router, F, Bot
+from aiogram.filters import StateFilter
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -8,7 +9,7 @@ from sqlalchemy import select, or_
 from bot.database.models import User, UserRole, Report, Plan
 from bot.keyboards.builders import (
     kb_cancel, kb_cancel_skip, kb_use_today, kb_confirm, kb_report_nav, kb_edit_fields,
-    menu_employee, menu_admin, menu_manager, kb_city, kb_projects_for_report
+    menu_employee, menu_admin, menu_manager, kb_city, kb_projects_for_report, kb_shift_type
 )
 from bot.utils.salary import calculate_photographer_salary, CITY_LABELS
 from bot.config import config
@@ -48,7 +49,6 @@ def _menu(role: str):
 
 # ——— Entry ——————————————————————————————————————————————————————————————
 
-@router.message(F.text == "📋 Сдать отчет")
 async def start_report(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
     if not db_user.is_active:
         await message.answer("⛔ У вас нет доступа. Обратитесь к администратору.")
@@ -73,10 +73,13 @@ async def start_report(message: Message, state: FSMContext, db_user: User, sessi
                                  "Шаг 3/14 — <b>Название проекта</b>\nВыберите проект:",
                                  ReportForm.project, kb=kb_projects_for_report(projs))
         else:
+            from bot.database.models import City
+            city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+            cities = city_res.scalars().all()
             await _finalize_step(message, state, db_user, session,
                                  f"📋 <b>Сдача отчёта</b> за <b>{today}</b>\n\n"
                                  "Шаг 2/14 — <b>Город</b>\nВыберите город:",
-                                 ReportForm.city, kb=kb_city())
+                                 ReportForm.city, kb=kb_city(cities))
     else:
         # Managers and admins: choose any date
         await message.answer(
@@ -98,33 +101,18 @@ async def use_today(call: CallbackQuery, state: FSMContext, db_user: User, sessi
     if db_user.city:
         await state.update_data(city=db_user.city)
         
-        # If bound to a project, jump straight to name
-        if db_user.role == UserRole.manager and db_user.project_id:
-            from bot.database.models import Project
-            res = await session.execute(select(Project).where(Project.id == db_user.project_id))
-            proj = res.scalar_one_or_none()
-            if proj:
-                await state.update_data(project=proj.name, project_id=proj.id)
-                await call.message.edit_text(f"✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
-                
-                name_to_use = db_user.display_name or db_user.full_name
-                if db_user.role == UserRole.employee:
-                    await state.update_data(employee_name=name_to_use)
-                    return await _finalize_step(call.message, state, db_user, session,
-                        "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
-                
-                return await _finalize_step(call.message, state, db_user, session,
-                    f"Шаг 4/14 — <b>Фамилия сотрудника</b>\nПредложение: «{name_to_use}»\nНажмите /use_name или введите вручную:",
-                    ReportForm.employee_name)
-
+        # All managers (city-wide) proceed to project selection for their city
         from bot.database.models import Project
         res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
         projs = res.scalars().all()
         await _finalize_step(call.message, state, db_user, session,
                              "Шаг 3/14 — <b>Название проекта</b>\nВыберите проект:", ReportForm.project, kb=kb_projects_for_report(projs))
     else:
+        from bot.database.models import City
+        city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+        cities = city_res.scalars().all()
         await _finalize_step(call.message, state, db_user, session,
-                             "Шаг 2/14 — <b>Город</b>\nВыберите город:", ReportForm.city, kb=kb_city())
+                             "Шаг 2/14 — <b>Город</b>\nВыберите город:", ReportForm.city, kb=kb_city(cities))
     await call.answer()
 
 
@@ -151,25 +139,7 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
     if db_user.city:
         await state.update_data(city=db_user.city)
         
-        # If bound to a project, jump straight to name
-        if db_user.role == UserRole.manager and db_user.project_id:
-            from bot.database.models import Project
-            res = await session.execute(select(Project).where(Project.id == db_user.project_id))
-            proj = res.scalar_one_or_none()
-            if proj:
-                await state.update_data(project=proj.name, project_id=proj.id)
-                await message.answer(f"{msg_prefix}✅ Проект: <b>{proj.name}</b>", parse_mode="HTML")
-                
-                name_to_use = db_user.display_name or db_user.full_name
-                if db_user.role == UserRole.employee:
-                    await state.update_data(employee_name=name_to_use)
-                    return await _finalize_step(message, state, db_user, session,
-                        "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
-
-                return await _finalize_step(message, state, db_user, session,
-                    f"Шаг 4/14 — <b>Фамилия сотрудника</b>\nПредложение: «{name_to_use}»\nНажмите /use_name или введите вручную:",
-                    ReportForm.employee_name)
-
+        # All managers (city-wide) proceed to project selection for their city
         from bot.database.models import Project
         res = await session.execute(select(Project).where(Project.city == db_user.city, Project.is_active == True))
         projs = res.scalars().all()
@@ -177,9 +147,12 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
                              f"{msg_prefix}Шаг 3/14 — <b>Название проекта</b>\nВыберите проект:",
                              ReportForm.project, kb=kb_projects_for_report(projs))
     else:
+        from bot.database.models import City
+        city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+        cities = city_res.scalars().all()
         await _finalize_step(message, state, db_user, session,
                              f"{msg_prefix}Шаг 2/14 — <b>Город</b>\nВыберите город:",
-                             ReportForm.city, kb=kb_city())
+                             ReportForm.city, kb=kb_city(cities))
 
 
 
@@ -190,7 +163,9 @@ async def process_date(message: Message, state: FSMContext, db_user: User, sessi
 async def process_city(call: CallbackQuery, state: FSMContext, db_user: User, session: AsyncSession):
     city = call.data.split(":")[2]  # 'gomel' or 'minsk'
     await state.update_data(city=city)
-    city_label = CITY_LABELS.get(city, city)
+    from bot.database.models import City
+    city_obj = (await session.execute(select(City).where(City.slug == city))).scalar_one_or_none()
+    city_label = f"{city_obj.emoji} {city_obj.name}" if city_obj else city.title()
     await call.message.edit_text(f"✅ Город: <b>{city_label}</b>", parse_mode="HTML")
     
     from bot.database.models import Project
@@ -214,7 +189,7 @@ async def process_project_callback(call: CallbackQuery, state: FSMContext, db_us
     await state.update_data(project=p.name, project_id=p.id)
     await call.message.edit_text(f"✅ Проект: <b>{p.name}</b>", parse_mode="HTML")
     
-    name_to_use = db_user.display_name or db_user.full_name
+    name_to_use = db_user.pretty_name
     
     # Auto-fill for employees
     if db_user.role == UserRole.employee:
@@ -232,7 +207,7 @@ async def process_project_callback(call: CallbackQuery, state: FSMContext, db_us
 
 @router.message(F.text == "/use_name", ReportForm.employee_name)
 async def use_suggested_name(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
-    name_to_use = db_user.display_name or db_user.full_name
+    name_to_use = db_user.pretty_name
     await state.update_data(employee_name=name_to_use)
     await _finalize_step(message, state, db_user, session,
         "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
@@ -240,9 +215,17 @@ async def use_suggested_name(message: Message, state: FSMContext, db_user: User,
 
 @router.message(ReportForm.employee_name)
 async def process_employee_name(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
-    await state.update_data(employee_name=message.text.strip())
+    name = message.text.strip()
+    if len(name) < 2 or name.isdigit():
+        await message.answer(
+            "❌ Введите корректную <b>фамилию</b> сотрудника (минимум 2 символа, не число).\n"
+            f"Или нажмите /use_name чтобы использовать <b>{db_user.pretty_name}</b>.",
+            parse_mode="HTML"
+        )
+        return
+    await state.update_data(employee_name=name)
     await _finalize_step(message, state, db_user, session,
-        "Шаг 5/13 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
+        "Шаг 5/14 — <b>Количество человек в смене</b> (1-20):", ReportForm.shift_count)
 
 
 # ——— Step 4: Shift count ——————————————————————————————————————————————————
@@ -275,18 +258,15 @@ async def process_shift_count(message: Message, state: FSMContext, db_user: User
         return
 
     # If n=1, ensure partners are cleared
-    await state.update_data(partners=None)
+    await state.update_data(partners=None, shift_type="full")
     await _finalize_step(message, state, db_user, session,
         "Шаг 6/14 — <b>Общая выручка</b> (BYN, только число):", ReportForm.revenue)
 
 
 @router.message(ReportForm.partners)
-async def process_partners(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
+async def process_partners(message: Message, state: FSMContext, db_user: User, session: AsyncSession):    
     partners_text = message.text.strip()
-    await state.update_data(partners=partners_text)
-    
-    # We do NOT combine names into employee_name here anymore.
-    # We keep them separate in the state (employee_name + partners).
+    await state.update_data(partners=partners_text, shift_type="full")
     
     await _finalize_step(message, state, db_user, session,
         "Шаг 6/14 — <b>Общая выручка</b> (BYN, только число):", ReportForm.revenue)
@@ -455,7 +435,17 @@ async def _show_confirm(msg: Message, state: FSMContext, session: AsyncSession):
     city = d.get("city", "gomel")
     report_date = datetime.fromisoformat(d["date"]).date()
     weekday = report_date.weekday()  # 0=Mon, 6=Sun
-    salary, sal_desc = calculate_photographer_salary(d["revenue"], d["shift_count"], city, weekday)
+
+    from bot.database.models import City, SalaryRule
+    rules_res = await session.execute(
+        select(SalaryRule)
+        .join(City)
+        .where(City.slug == city)
+    )
+    rules = rules_res.scalars().all()
+
+    shift_type = d.get("shift_type", "full")
+    salary, sal_desc = calculate_photographer_salary(d["revenue"], d["shift_count"], city, weekday, rules, shift_type)
     plan_line = await _get_plan_line(session, d.get("project_id"), city, d["revenue"])
 
     date_str = report_date.strftime("%d.%m.%Y")
@@ -530,6 +520,7 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
         report.trainee_salary = d["trainee_salary"]
         report.city = d.get("city")
         report.project_id = d.get("project_id")
+        report.shift_type = d.get("shift_type", "full")
         report.is_reviewed = True
         report.reviewed_by_id = db_user.id
     else:
@@ -552,6 +543,7 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
             trainee_salary=d["trainee_salary"],
             city=d.get("city"),
             project_id=d.get("project_id"),
+            shift_type=d.get("shift_type", "full"),
         )
         session.add(report)
         
@@ -567,11 +559,8 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
         await call.answer()
         return
 
-    total_salary = d['salary'] * d['shift_count']
     await call.message.answer(
-        f"✅ Отчёт принят!{plan_part}\n\n"
-        f"💸 <b>Возьмите из кассы (на всех): {_fmt(total_salary)} BYN</b>\n"
-        f"<i>(По {_fmt(d['salary'])} на человека)</i>",
+        f"✅ Отчет принят!{plan_part}\n\n",
         parse_mode="HTML",
         reply_markup=_menu(db_user.role.value)
     )
@@ -595,6 +584,26 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
                     await bot.send_message(adm.telegram_id, fwd, parse_mode="HTML")
                 except Exception:
                     pass
+
+    # Forward to shared city chat (in the correct topic thread per city)
+    if config.city_chat_id:
+        report_city = d.get("city", "")
+        thread_id = None
+        from bot.database.models import City
+        city_res = await session.execute(select(City).where(City.slug == report_city))
+        city_obj = city_res.scalar_one_or_none()
+        if city_obj:
+            thread_id = city_obj.thread_id
+        try:
+            await bot.send_message(
+                config.city_chat_id,
+                fwd,
+                parse_mode="HTML",
+                message_thread_id=thread_id,
+            )
+        except Exception:
+            pass
+
     await call.answer()
 
 
@@ -687,8 +696,11 @@ async def jump_to_edit(call: CallbackQuery, state: FSMContext, session: AsyncSes
         from bot.keyboards.builders import kb_projects_for_report
         kb = kb_projects_for_report(projs)
     elif target_state == ReportForm.city:
+        from bot.database.models import City
+        city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+        cities = city_res.scalars().all()
         from bot.keyboards.builders import kb_city
-        kb = kb_city()
+        kb = kb_city(cities)
         
     await call.message.edit_text(f"Редактирование: {prompt}", parse_mode="HTML", reply_markup=kb)
     await call.answer()
@@ -707,7 +719,7 @@ async def _finalize_step(message: Message, state: FSMContext, db_user: User, ses
 
 
 @router.callback_query(F.data == "report:back")
-async def back_report(call: CallbackQuery, state: FSMContext):
+async def back_report(call: CallbackQuery, state: FSMContext, db_user: User):
     data = await state.get_data()
     if data.get("admin_editing_report_id"):
         # When editing, Back from ANYWHERE (including confirm) goes to edit fields menu
@@ -726,6 +738,7 @@ async def back_report(call: CallbackQuery, state: FSMContext):
         ReportForm.project: (ReportForm.city, "Шаг 2/14 — <b>Город</b>\nВыберите город:"),
         ReportForm.employee_name: (ReportForm.project, "Шаг 3/14 — <b>Название проекта</b>:"),
         ReportForm.shift_count: (ReportForm.employee_name, "Шаг 4/14 — <b>Фамилия сотрудника</b>:"),
+        ReportForm.partners: (ReportForm.shift_count, "Шаг 5/14 — <b>Количество человек в смене</b>:"),
         ReportForm.revenue: (ReportForm.shift_count, "Шаг 5/14 — <b>Количество человек в смене</b>:"),
         ReportForm.cash: (ReportForm.revenue, "Шаг 6/14 — <b>Общая выручка</b> (BYN):"),
         ReportForm.acquiring: (ReportForm.cash, "Шаг 7/14 — <b>Наличные</b> (BYN):"),
@@ -750,6 +763,10 @@ async def back_report(call: CallbackQuery, state: FSMContext):
         target = prev_map.get(ReportForm.employee_name)
         if target:
             prev_state, prompt = target
+            
+    # Special: if going back to shift_count but was on partners
+    if curr == ReportForm.revenue and data.get("shift_count", 1) > 1:
+        prev_state, prompt = (ReportForm.partners, "👥 Введите <b>фамилии напарников</b>:")
 
     await state.set_state(prev_state)
     
@@ -770,10 +787,21 @@ async def back_report(call: CallbackQuery, state: FSMContext):
 def _build_admin_notification(d: dict, db_user: User, plan_line: str | None = None) -> str:
     report_date = datetime.fromisoformat(d["date"]).strftime("%d.%m.%Y")
     plan_block = f"\n{plan_line}\n" if plan_line else ""
+    # Build employee display: show partners if joint shift
+    employee_display = d.get("employee_name", "—")
+    if d.get("partners"):
+        employee_display += f" + {d['partners']}"
+    # Show submitter separately only if they differ from the employee
+    submitter_line = ""
+    if db_user.pretty_name.lower() not in employee_display.lower():
+        submitter_line = f"📨 Сдал:           {db_user.pretty_name}\n"
+    
     return (
         f"📋 <b>Новый отчёт!</b>\n\n"
-        f"👤 От: {db_user.full_name}\n"
+        f"👤 Сотрудник:      {employee_display}\n"
+        f"{submitter_line}"
         f"📅 Дата:           {report_date}\n"
+        f"🏙️ Город:          {CITY_LABELS.get(d.get('city'), d.get('city'))}\n"
         f"🎭 Проект:         {d['project']}\n"
         f"👥 Чел. в смене:   {d['shift_count']}\n\n"
         f"💰 Выручка:        {_fmt(d['revenue'])} BYN\n"

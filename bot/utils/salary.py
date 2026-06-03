@@ -1,4 +1,4 @@
-﻿"""
+"""
 Salary calculation rules (hardcoded per business rules).
 
 Photographer Gomel:
@@ -6,8 +6,11 @@ Photographer Gomel:
   Saturday: <=400 → 25 + 10%; 400-800 → 20%; >800 → 22%
   Sunday:   <=350 → 25 + 10%; 350-600 → 20%; >600 → 22%
 
-Photographer Minsk (all days):
+Photographer Minsk (full day):
   <=450 → 45 + 10%; 450-1000 → 20%; >1000 → 22%
+
+Photographer Minsk (half day):
+  <=450 → 22.5 + 10%; 450-1000 → 20%; >1000 → 22%
 
 Percentage part is divided equally among shift_count.
 
@@ -39,8 +42,13 @@ _GOMEL_SUNDAY = [  # weekday 6
     (350, 600,   0.0, 0.20),
     (600, None,  0.0, 0.22),
 ]
-_MINSK_ALL = [  # all days
+_MINSK_ALL = [  # all days, full shift
     (0,    450,  45.0, 0.10),
+    (450, 1000,   0.0, 0.20),
+    (1000, None,  0.0, 0.22),
+]
+_MINSK_HALF = [  # all days, half shift (base 22.5 instead of 45)
+    (0,    450,  22.5, 0.10),
     (450, 1000,   0.0, 0.20),
     (1000, None,  0.0, 0.22),
 ]
@@ -81,15 +89,48 @@ def _apply_tiers(revenue: float, tiers: list[tuple]) -> tuple[float, float, floa
 
 
 def calculate_photographer_salary(
-    revenue: float, shift_count: int, city: str, weekday: int
+    revenue: float, shift_count: int, city: str, weekday: int, rules: list = None, shift_type: str = "full"
 ) -> tuple[float, str]:
     """
     Returns (salary_per_person, description_string).
     Description suitable for display in Telegram.
     """
     city = city.lower()
-    rules = _get_rules(city, weekday)
-    base, pct, _ = _apply_tiers(revenue, rules)
+    
+    if rules is None:
+        # Fallback to legacy hardcoded rules
+        if city == CITY_MINSK and shift_type == "half":
+            tiers = _MINSK_HALF
+        else:
+            tiers = _get_rules(city, weekday)
+    else:
+        # Match dynamic rules from database
+        day_map = {5: "saturday", 6: "sunday"}
+        target_day = day_map.get(weekday, "weekday")
+        
+        # Filter rules by day type
+        filtered = [r for r in rules if r.day_type == target_day]
+        if not filtered:
+            filtered = [r for r in rules if r.day_type == "all_days"]
+        if not filtered:
+            filtered = rules
+            
+        # Get matching shift type rules
+        shift_rules = [r for r in filtered if r.shift_type == shift_type]
+        if not shift_rules:
+            # Fallback to 'full' if 'half' not found, or just first available
+            shift_rules = [r for r in filtered if r.shift_type == "full"]
+        if not shift_rules:
+            shift_rules = filtered
+            
+        tiers = []
+        for r in shift_rules:
+            tiers.append((r.threshold_min, r.threshold_max, r.base_salary, r.percentage))
+            
+        if not tiers:
+            tiers = _get_rules(city, weekday)
+
+    base, pct, _ = _apply_tiers(revenue, tiers)
     total_salary = base + (revenue * pct)
     salary = round(total_salary / max(shift_count, 1), 2)
 

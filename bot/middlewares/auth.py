@@ -34,17 +34,27 @@ class DatabaseMiddleware(BaseMiddleware):
                 is_new = db_user is None
 
                 if is_new:
-                    db_user = User(
-                        telegram_id=tg_user.id,
-                        username=tg_user.username,
-                        full_name=tg_user.full_name or f"User_{tg_user.id}",
-                        role=UserRole.pending,
-                        is_active=False,
-                    )
-                    session.add(db_user)
-                    await session.commit()
-                    await session.refresh(db_user)
-                    data["is_new_user"] = True
+                    try:
+                        db_user = User(
+                            telegram_id=tg_user.id,
+                            username=tg_user.username,
+                            full_name=tg_user.full_name or f"User_{tg_user.id}",
+                            role=UserRole.pending,
+                            is_active=False,
+                        )
+                        session.add(db_user)
+                        await session.commit()
+                        await session.refresh(db_user)
+                        data["is_new_user"] = True
+                    except Exception:
+                        # Race condition: another request already inserted this user
+                        # (UniqueViolation on telegram_id). Roll back and re-fetch.
+                        await session.rollback()
+                        res2 = await session.execute(
+                            select(User).where(User.telegram_id == tg_user.id)
+                        )
+                        db_user = res2.scalar_one_or_none()
+                        data["is_new_user"] = False
                 else:
                     # Keep name in sync
                     if tg_user.full_name and tg_user.full_name != db_user.full_name:
@@ -62,5 +72,9 @@ class DatabaseMiddleware(BaseMiddleware):
                     await session.refresh(db_user)
 
             data["db_user"] = db_user
+            # Guard: if there's no real user (channel post, anonymous admin msg, etc.)
+            # skip the handler to prevent crashes in all downstream handlers.
+            if db_user is None:
+                return
             return await handler(event, data)
 
