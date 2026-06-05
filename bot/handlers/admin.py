@@ -25,6 +25,7 @@ from bot.utils.charts import (
     generate_revenue_chart, generate_plan_performance_chart,
     generate_yearly_revenue_chart
 )
+from bot.config import config
 
 router = Router()
 
@@ -1878,6 +1879,11 @@ async def review_reject_start(call: CallbackQuery, state: FSMContext, session: A
     await state.update_data(reject_report_id=report_id)
     await state.set_state(AdminForm.reject_reason)
     
+    # Store the message ID and chat ID of the report card so we can delete it after rejection
+    await state.update_data(reject_message_id=call.message.message_id)
+    # Store the thread (topic) ID if the message is inside a forum topic
+    await state.update_data(reject_thread_id=getattr(call.message, "message_thread_id", None))
+    await state.update_data(reject_chat_id=call.message.chat.id)
     await call.message.edit_text(
         "📝 <b>Причина отклонения</b>\n\nВведите причину (её увидит сотрудник).\n"
         "Например: <i>«Неверно указана выручка по безналу»</i>",
@@ -1892,9 +1898,9 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
     reason = message.text.strip()
     data = await state.get_data()
     report_id = data.get("reject_report_id")
-    await state.clear()
 
     if not report_id:
+        await state.clear()
         await message.answer("Ошибка: ID отчета потерян. Начните сначала.")
         return
 
@@ -1935,14 +1941,32 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
     except Exception as e:
         print(f"Failed to notify employee {emp_tg_id}: {e}")
 
-    # 3. Delete report
+    # 3. Delete from shared city chat or admin chat
+    if r.group_message_id:
+        target_chat = config.city_chat_id or config.admin_chat_id
+        if target_chat:
+            try:
+                await bot.delete_message(target_chat, r.group_message_id)
+            except Exception as e:
+                # Telegram may refuse deletion for messages older than 48 h or insufficient rights
+                print(f"Failed to delete group message from {target_chat}: {e}")
+
+    # 4. Delete the admin card message (the one with the buttons)
+    admin_msg_id = data.get("reject_message_id")
+    admin_chat_id = data.get("reject_chat_id")
+    if admin_msg_id and admin_chat_id:
+        try:
+            await bot.delete_message(admin_chat_id, admin_msg_id)
+        except Exception:
+            pass
+
+    # 5. Delete from DB
     await session.delete(r)
-    await log_action(session, db_user.id, "Отклонил отчет", f"ID {report_id}, Причина: {reason}")
     await session.commit()
 
-    await message.answer(f"✅ Отчет #{report_id} успешно отклонен. Сотрудник уведомлен.")
+    await message.answer(f"✅ Отчет сотрудника {user_obj.pretty_name} за {date_str} отклонен и удален.")
     
-    # Return to the list of unreviewed reports
+    # Return to the list
     await review_list(None, session, db_user, state=state, message=message)
 
 

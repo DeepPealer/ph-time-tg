@@ -73,6 +73,9 @@ class Report(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    # Telegram message ID in the city group chat (for deletion on rejection)
+    group_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="reports")
     reviewer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[reviewed_by_id])
     project: Mapped[Optional["Project"]] = relationship()

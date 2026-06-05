@@ -567,9 +567,10 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
 
     # Forward to admin chat / admin DMs
     fwd = _build_admin_notification(d, db_user, plan_line)
+    admin_msg_res = None
     if config.admin_chat_id:
         try:
-            await bot.send_message(config.admin_chat_id, fwd, parse_mode="HTML")
+            admin_msg_res = await bot.send_message(config.admin_chat_id, fwd, parse_mode="HTML")
         except Exception:
             pass
     else:
@@ -595,14 +596,23 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
         if city_obj:
             thread_id = city_obj.thread_id
         try:
-            await bot.send_message(
+            result = await bot.send_message(
                 config.city_chat_id,
                 fwd,
                 parse_mode="HTML",
                 message_thread_id=thread_id,
             )
+            # Save the message ID of the forwarded report for later deletion
+            if result:
+                report.group_message_id = result.message_id
+                await session.commit()
         except Exception:
             pass
+    elif admin_msg_res:
+        # If no city chat, but we sent it to admin chat, save that ID for deletion
+        report.group_message_id = admin_msg_res.message_id
+        await session.commit()
+
 
     await call.answer()
 
