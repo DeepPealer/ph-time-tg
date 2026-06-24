@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "Detailed implementation plan to refactor the bot's static city system (Minsk and Gomel) into a dynamic, database-driven architecture. Includes database schema migrations for new tables (City and SalaryRule), dynamic keyboard builders, admin interface flow for managing cities and setting employee rates, updated salary calculation utilities, and routing logic for Telegram threads.",
+  "updatedAt":  "2026-05-25T20:28:58.271336500Z",
+  "requestFeedback":  true
+}
