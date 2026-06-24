@@ -7,3 +7,5 @@ __pycache__/
 venv/
 *.db
 *.sqlite
+pgdata/
+service_account.json

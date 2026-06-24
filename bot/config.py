@@ -16,7 +16,9 @@ class Config:
     database_url: str
     proxy_url: str | None           # Optional HTTP/SOCKS5 proxy for Telegram API
     telegram_api_url: str | None    # Optional Custom Telegram API URL (e.g. Cloudflare Worker)
-
+    use_google_sheets: bool
+    google_sheets_spreadsheet_id: str | None
+    google_service_account_file: str
 
 def load_config() -> Config:
     raw_ids = getenv("ADMIN_IDS", "")
@@ -42,8 +44,12 @@ def load_config() -> Config:
         database_url=getenv("DATABASE_URL", "sqlite+aiosqlite:///data/bot.db"),
         proxy_url=getenv("PROXY_URL", None) or None,
         telegram_api_url=getenv("TELEGRAM_API_URL", None) or None,
+        use_google_sheets=getenv("USE_GOOGLE_SHEETS", "False").lower() in ("true", "1", "yes"),
+        google_sheets_spreadsheet_id=getenv("GOOGLE_SHEETS_SPREADSHEET_ID", None) or None,
+        google_service_account_file=getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json"),
     )
 
 
 config = load_config()
+
 

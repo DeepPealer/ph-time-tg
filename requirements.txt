@@ -9,3 +9,5 @@ apscheduler
 matplotlib
 seaborn
 aiohttp-socks
+gspread==6.1.2
+gspread-formatting==1.1.2

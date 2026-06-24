@@ -549,6 +549,16 @@ async def confirm_report(call: CallbackQuery, state: FSMContext, db_user: User,
         
     await session.commit()
 
+    # Фоновое обновление Google Sheets
+    try:
+        import asyncio
+        from bot.utils.google_sheets import sync_data_to_sheets_bg
+        rep_date = datetime.fromisoformat(d["date"]).date()
+        asyncio.create_task(sync_data_to_sheets_bg(rep_date.year, rep_date.month, city=d.get("city") or "all"))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to launch background Google Sheets sync: {e}")
+
     plan_line = await _get_plan_line(session, d.get("project_id"), d.get("city"), d["revenue"])
 
     await call.message.edit_reply_markup()

@@ -430,33 +430,46 @@ def kb_mgmt_date(today_str: str, yesterday_str: str) -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
-def kb_projects(projects_by_city: dict) -> InlineKeyboardMarkup:
+def kb_project_cities(cities: list) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    
-    cities = sorted(projects_by_city.keys())
     for city in cities:
-        projs = projects_by_city[city]
-        if not projs: continue
-        
-        city_label = {"gomel": "🏙️ ГОМЕЛЬ", "minsk": "🌆 МИНСК"}.get(city, "❓ БЕЗ ГОРОДА")
-        b.button(text=f"─── {city_label} ───", callback_data="none")
-        
-        for p in sorted(projs, key=lambda x: x.name):
-            icon = "✅" if p.is_active else "⏸"
-            b.button(text=f"{icon} {p.name}", callback_data=f"proj:view:{p.id}")
-            
+        b.button(text=f"{city.emoji} {city.name}", callback_data=f"proj:list:{city.slug}:1")
+    b.button(text="❓ Без города", callback_data="proj:list:none:1")
     b.button(text="➕ Создать проект", callback_data="proj:add")
     b.button(text="⬅️ Назад",           callback_data="adm:back")
-    b.adjust(1)
+    b.adjust(2, 1, 1)
     return b.as_markup()
 
 
-def kb_project_actions(project_id: int, is_active: bool) -> InlineKeyboardMarkup:
+def kb_projects_paginated(projects: list, city_slug: str, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for p in sorted(projects, key=lambda x: x.name):
+        icon = "✅" if p.is_active else "⏸"
+        b.button(text=f"{icon} {p.name}", callback_data=f"proj:view:{p.id}")
+    b.adjust(1)
+    
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton(text="◀️ Пред.", callback_data=f"proj:list:{city_slug}:{page - 1}"))
+    if total_pages > 1:
+        nav_row.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="none"))
+    if page < total_pages:
+        nav_row.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"proj:list:{city_slug}:{page + 1}"))
+    
+    if nav_row:
+        b.row(*nav_row)
+        
+    b.row(InlineKeyboardButton(text="➕ Создать проект", callback_data=f"proj:add:{city_slug}"))
+    b.row(InlineKeyboardButton(text="⬅️ К городам", callback_data="adm:projects"))
+    return b.as_markup()
+
+
+def kb_project_actions(project_id: int, is_active: bool, city_slug: str = "none") -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     toggle_text = "⏸ Приостановить" if is_active else "▶️ Активировать"
     b.button(text=toggle_text,      callback_data=f"proj:toggle:{project_id}")
     b.button(text="🗑️ Удалить",     callback_data=f"proj:delete:{project_id}")
-    b.button(text="⬅️ К списку",     callback_data="adm:projects")
+    b.button(text="⬅️ К списку",     callback_data=f"proj:list:{city_slug or 'none'}:1")
     b.adjust(1)
     return b.as_markup()
 
@@ -531,6 +544,7 @@ def kb_report_search_nav() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="📅 Поиск по дате", callback_data="adm:reports_by_date")
     b.button(text="📅 Месячный отчёт (Excel)", callback_data="period:monthly_calendar")
+    b.button(text="🔄 Синхронизировать Google", callback_data="adm:sync_google")
     b.button(text="⬅️ Назад", callback_data="adm:back")
     b.adjust(1)
     return b.as_markup()

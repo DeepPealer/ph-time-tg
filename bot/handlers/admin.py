@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, timedelta, datetime
 from calendar import monthrange
 import html
@@ -10,13 +11,14 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
-from bot.database.models import User, UserRole, SalarySetting, Plan, Report, ManagementExpense, Project
+from bot.database.models import User, UserRole, SalarySetting, Plan, Report, ManagementExpense, Project, City
 from bot.keyboards.builders import (
     kb_admin_main, kb_report_period, kb_employee_list, kb_employee_actions,
     kb_salary_levels, kb_plans, kb_back, kb_analytics, kb_analytics_cities,
     menu_admin, menu_manager, kb_city_for_employee, kb_month_select,
     kb_monthly_report_cities, kb_report_review, kb_employee_cities,
-    kb_projects, kb_project_actions, kb_projects_for_plan, kb_report_search_nav
+    kb_project_cities, kb_projects_paginated, kb_project_actions,
+    kb_projects_for_plan, kb_report_search_nav
 )
 from bot.utils.excel import generate_excel_report, generate_monthly_calendar
 from bot.utils.salary import calculate_manager_salary, CITY_LABELS
@@ -141,6 +143,22 @@ async def adm_reports(call: CallbackQuery, db_user: User):
     except Exception as e:
         await call.message.answer(f"❌ Ошибка: {html.escape(str(e))}")
     await call.answer()
+
+
+@router.callback_query(F.data == "adm:sync_google")
+async def adm_sync_google(call: CallbackQuery, db_user: User):
+    if not _require_admin(db_user): return await call.answer("Нет доступа", show_alert=True)
+    await call.message.edit_text("⏳ <b>Синхронизация с Google Sheets запущена...</b>\n\nБот переносит все данные за текущий месяц в Google Таблицу в фоновом режиме.", parse_mode="HTML", reply_markup=kb_back("adm:reports"))
+    await call.answer()
+    
+    try:
+        from bot.utils.google_sheets import sync_data_to_sheets_bg
+        from datetime import date
+        today = date.today()
+        # Launch sync in background task
+        asyncio.create_task(sync_data_to_sheets_bg(today.year, today.month, city="all"))
+    except Exception as e:
+        await call.message.answer(f"❌ <b>Ошибка запуска синхронизации:</b>\n{e}", parse_mode="HTML")
 
 
 @router.callback_query(F.data == "adm:reports_by_date")
@@ -764,7 +782,18 @@ async def plan_toggle(call: CallbackQuery, session: AsyncSession):
     plan = res.scalar_one_or_none()
     if plan:
         plan.is_active = not plan.is_active
+        plan_city = plan.city
         await session.commit()
+        
+        # Фоновое обновление Google Sheets
+        try:
+            from bot.utils.google_sheets import sync_data_to_sheets_bg
+            from datetime import date
+            today = date.today()
+            asyncio.create_task(sync_data_to_sheets_bg(today.year, today.month, city=plan_city or "all"))
+        except Exception:
+            pass
+            
     res2 = await session.execute(select(Plan).order_by(Plan.created_at.desc()))
     plans = res2.scalars().all()
     from collections import defaultdict
@@ -781,9 +810,19 @@ async def plan_delete(call: CallbackQuery, session: AsyncSession):
     res = await session.execute(select(Plan).where(Plan.id == plan_id))
     plan = res.scalar_one_or_none()
     if plan:
+        plan_city = plan.city
         await session.delete(plan)
         await session.commit()
-    
+        
+        # Фоновое обновление Google Sheets
+        try:
+            from bot.utils.google_sheets import sync_data_to_sheets_bg
+            from datetime import date
+            today = date.today()
+            asyncio.create_task(sync_data_to_sheets_bg(today.year, today.month, city=plan_city or "all"))
+        except Exception:
+            pass
+            
     res2 = await session.execute(select(Plan).order_by(Plan.created_at.desc()))
     plans = res2.scalars().all()
     from collections import defaultdict
@@ -872,6 +911,16 @@ async def plan_add_period(message: Message, state: FSMContext, session: AsyncSes
         period=period
     ))
     await session.commit()
+    
+    # Фоновое обновление Google Sheets
+    try:
+        from bot.utils.google_sheets import sync_data_to_sheets_bg
+        from datetime import date
+        today = date.today()
+        asyncio.create_task(sync_data_to_sheets_bg(today.year, today.month, city=d["plan_city"] or "all"))
+    except Exception:
+        pass
+        
     await state.clear()
     proj_str = d.get("plan_project_name") or "Все проекты"
     period_str = "день" if period == "day" else "месяц"
@@ -1357,6 +1406,13 @@ async def mgmt_save(message: Message, state: FSMContext, session: AsyncSession, 
     await log_action(session, db_user.id, "Добавлен управл. расход", f"{d['mgmt_category']}: {d['mgmt_amount']} р")
     await session.commit()
     
+    # Фоновое обновление Google Sheets
+    try:
+        from bot.utils.google_sheets import sync_data_to_sheets_bg
+        asyncio.create_task(sync_data_to_sheets_bg(expense.date.year, expense.date.month, city=expense.city or "all"))
+    except Exception:
+        pass
+        
     kb = menu_admin() if db_user.role == UserRole.admin else menu_manager()
     await message.answer("✅ Управленческий расход сохранён!", reply_markup=kb)
 
@@ -1424,9 +1480,19 @@ async def adm_mgmt_delete(call: CallbackQuery, session: AsyncSession, db_user: U
     
     if exp:
         info = f"{exp.category}: {exp.amount} р ({exp.date})"
+        exp_date = exp.date
+        exp_city = exp.city
         await session.delete(exp)
         await log_action(session, db_user.id, "Удален управл. расход", info)
         await session.commit()
+        
+        # Фоновое обновление Google Sheets
+        try:
+            from bot.utils.google_sheets import sync_data_to_sheets_bg
+            asyncio.create_task(sync_data_to_sheets_bg(exp_date.year, exp_date.month, city=exp_city or "all"))
+        except Exception:
+            pass
+            
         await call.answer("✅ Удалено", show_alert=True)
         
         # Refresh the list
@@ -1974,37 +2040,89 @@ async def process_reject_reason(message: Message, state: FSMContext, session: As
 
 @router.callback_query(F.data == "adm:projects")
 async def adm_projects(call: CallbackQuery, session: AsyncSession, db_user: User):
+    """Step 1: Show city selector for projects."""
     if not _require_admin(db_user): return
-    res = await session.execute(select(Project).order_by(Project.city, Project.name))
-    projs = res.scalars().all()
-    
-    from collections import defaultdict
-    by_city = defaultdict(list)
-    for p in projs:
-        by_city[p.city].append(p)
-        
+    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+    cities = city_res.scalars().all()
     await call.message.edit_text(
-        "🏢 <b>Управление проектами</b>\n\nЗдесь вы можете добавлять новые места работы.",
-        parse_mode="HTML", reply_markup=kb_projects(by_city)
+        "🏢 <b>Управление проектами</b>\n\nВыберите город для просмотра проектов:",
+        parse_mode="HTML", reply_markup=kb_project_cities(cities)
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("proj:list:"))
+async def proj_list(call: CallbackQuery, session: AsyncSession, db_user: User):
+    """Step 2: Show paginated project list for selected city."""
+    if not _require_admin(db_user): return
+    parts = call.data.split(":")
+    # proj:list:<city_slug>:<page>
+    city_slug = parts[2]
+    page = int(parts[3]) if len(parts) > 3 else 1
+    PAGE_SIZE = 10
+
+    if city_slug == "none":
+        # Projects not bound to any known city
+        city_slugs_res = await session.execute(select(City.slug))
+        known_slugs = [r[0] for r in city_slugs_res.all()]
+        res = await session.execute(
+            select(Project)
+            .where((Project.city == None) | (~Project.city.in_(known_slugs)))
+            .order_by(Project.name)
+        )
+        city_label = "❓ Без города"
+    else:
+        city_res = await session.execute(select(City).where(City.slug == city_slug))
+        city_obj = city_res.scalar_one_or_none()
+        city_label = f"{city_obj.emoji} {city_obj.name}" if city_obj else city_slug.upper()
+        res = await session.execute(
+            select(Project).where(Project.city == city_slug).order_by(Project.name)
+        )
+
+    all_projects = res.scalars().all()
+    total = len(all_projects)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(1, min(page, total_pages))
+    page_projects = all_projects[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+
+    text = (
+        f"🏢 <b>Проекты — {city_label}</b>\n"
+        f"Всего: {total} | Страница {page}/{total_pages}"
+    )
+    await call.message.edit_text(
+        text, parse_mode="HTML",
+        reply_markup=kb_projects_paginated(page_projects, city_slug, page, total_pages)
     )
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("proj:view:"))
 async def proj_view(call: CallbackQuery, session: AsyncSession):
+    """Step 3: Project detail view with dynamic city lookup."""
     proj_id = int(call.data.split(":")[2])
     res = await session.execute(select(Project).where(Project.id == proj_id))
     p = res.scalar_one_or_none()
     if not p: return await call.answer("Не найден")
-    
-    city_str = {"gomel": "🏙️ Гомель", "minsk": "🌆 Минск"}.get(p.city, p.city)
+
+    # Dynamic city lookup — no hardcoded dict, handles any city including Grodno
+    city_res = await session.execute(select(City).where(City.slug == p.city))
+    city_obj = city_res.scalar_one_or_none()
+    if city_obj:
+        city_str = f"{city_obj.emoji} {city_obj.name}"
+    elif p.city:
+        city_str = p.city.upper()
+    else:
+        city_str = "Без города"
+
     status = "✅ Активен" if p.is_active else "⏸ Приостановлен"
     text = (
         f"🏢 <b>Проект: {p.name}</b>\n"
         f"🏙️ Город: {city_str}\n"
         f"📊 Статус: {status}"
     )
-    await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb_project_actions(p.id, p.is_active))
+    city_slug = p.city if p.city else "none"
+    await call.message.edit_text(text, parse_mode="HTML",
+                                  reply_markup=kb_project_actions(p.id, p.is_active, city_slug))
     await call.answer()
 
 
@@ -2024,20 +2142,37 @@ async def proj_delete(call: CallbackQuery, session: AsyncSession, db_user: User)
     proj_id = int(call.data.split(":")[2])
     res = await session.execute(select(Project).where(Project.id == proj_id))
     p = res.scalar_one_or_none()
+    city_slug = p.city if p and p.city else "none"
     if p:
         await session.delete(p)
         await session.commit()
-    await adm_projects(call, session, db_user)
+    # Return to paginated list for the same city
+    call.data = f"proj:list:{city_slug}:1"
+    await proj_list(call, session, db_user)
 
 
-@router.callback_query(F.data == "proj:add")
+@router.callback_query(F.data.startswith("proj:add"))
 async def proj_add_start(call: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await state.set_state(AdminForm.proj_city)
-    from bot.database.models import City
-    city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
-    cities = city_res.scalars().all()
-    from bot.keyboards.builders import kb_city
-    await call.message.edit_text("🏙️ Выберите город для нового проекта:", reply_markup=kb_city(cities))
+    """Start project creation. Optionally pre-fill city from proj:add:<city_slug>."""
+    parts = call.data.split(":")
+    prefill_city = parts[2] if len(parts) > 2 and parts[2] not in ("", "none") else None
+
+    if prefill_city:
+        # City already selected — skip city-picker step
+        await state.update_data(proj_city=prefill_city)
+        await state.set_state(AdminForm.proj_name)
+        await call.message.edit_text(
+            "📌 Введите <b>название проекта</b> (например: Садик №5):",
+            parse_mode="HTML", reply_markup=kb_back(f"proj:list:{prefill_city}:1")
+        )
+    else:
+        await state.set_state(AdminForm.proj_city)
+        city_res = await session.execute(select(City).where(City.is_active == True).order_by(City.name))
+        cities = city_res.scalars().all()
+        from bot.keyboards.builders import kb_city
+        await call.message.edit_text(
+            "🏙️ Выберите город для нового проекта:", reply_markup=kb_city(cities)
+        )
     await call.answer()
 
 
@@ -2047,10 +2182,10 @@ async def proj_add_city(call: CallbackQuery, state: FSMContext, db_user: User):
     if city == "cancel":
         await state.clear()
         return await adm_back(call, db_user, state)
-        
+
     await state.update_data(proj_city=city)
     await state.set_state(AdminForm.proj_name)
-    await call.message.edit_text("📌 Введите <b>название проекта</b> (например: Садик №5):", 
+    await call.message.edit_text("📌 Введите <b>название проекта</b> (например: Садик №5):",
                                  parse_mode="HTML", reply_markup=kb_back("adm:projects"))
     await call.answer()
 
@@ -2060,11 +2195,11 @@ async def proj_add_name(message: Message, state: FSMContext, session: AsyncSessi
     name = message.text.strip()
     data = await state.get_data()
     city = data.get("proj_city")
-    
+
     session.add(Project(name=name, city=city))
     await session.commit()
     await state.clear()
-    
+
     await message.answer(f"✅ Проект «{name}» добавлен!", reply_markup=menu_admin())
 
 @router.message(Command("setproj"))
